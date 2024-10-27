@@ -87,7 +87,6 @@ This endpoint is used to add a task to the queue for generating an image from te
    - model_name
    - prompt (the "positive" prompt)
    - negative_prompt (optional)
-   - message_id (optional)
    - owner_id
    - job_id (optional, if not present, Navigator will generate one on its own)
             - (if you are going to specify this, please ensure it is unique as Navigator will blindly trust that its unique)
@@ -98,7 +97,7 @@ This endpoint is used to add a task to the queue for generating an image from te
  */
 ```
 
-The `model_name` field should be the `model_name` field from the `/api/models` endpoint. The `message_id` currently has no use, but it will be tracked in the database for later if you provide one.
+The `model_name` field should be the `model_name` field from the `/api/models` endpoint. 
 
 The `owner_id` field should be a unique identifier for the user that is submitting the job. Navigator has no way to enforce this, and it is up to the client to ensure that this is unique for auditing/accounting purposes.
 
@@ -145,7 +144,7 @@ The WebSocket API emits the following events:
 
 **Note**: All events will contain a `job_id` field that is unique to the job (that was obtained when the client queued the job), if it is an event related to a job.
 
-`model-change`: This event is emitted when Navigator believes that the Stable Diffusion model needs to be changed on the backend. This indicates that the job might take a bit longer to start.
+`model-changed`: This event is emitted when Navigator believes that the Stable Diffusion model needs to be changed on the backend. This indicates that the job might take a bit longer to start.
 The `model_name` field is included, which indicates what Navigator believes the backend is switching to. This is the best guess and may not be accurate.
 The `job_id` field is also included, which indicates what job this change is related to.
 

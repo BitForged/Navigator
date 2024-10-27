@@ -72,7 +72,6 @@ router.post('/queue/txt2img', async (req, res) => {
         - model_name
         - prompt (the "positive" prompt)
         - negative_prompt
-        - message_id (optional)
         - owner_id
         - job_id (optional, if not present, generate one)
         - width (optional, default to 512)
@@ -81,7 +80,7 @@ router.post('/queue/txt2img', async (req, res) => {
         - seed (optional, default to null)
       */
 
-    const { model_name, prompt, negative_prompt, message_id, owner_id, job_id, width, height, steps, seed } = req.body;
+    const { model_name, prompt, negative_prompt, owner_id, job_id, width, height, steps, seed } = req.body;
 
     if (!model_name || !prompt || !owner_id) {
         res.json({ error: 'Missing required parameters' });
@@ -92,7 +91,6 @@ router.post('/queue/txt2img', async (req, res) => {
         model_name,
         prompt,
         negative_prompt,
-        message_id,
         owner_id,
         job_id: job_id || uuidv4().toString().substring(0, 8), //TODO: Check if job_id is unique
         width: width || 512,
@@ -165,7 +163,7 @@ async function worker() {
             task.status = 'started';
             delete task.queue_size;
             try {
-                io.sockets.emit('task-started', task);
+                io.sockets.emit('task-started', cleanseTask(task));
                 await processTxt2ImgTask(task);
             } catch(error) {
                 console.error('Error processing task: ', error);
@@ -181,7 +179,7 @@ async function worker() {
 
 function createImageJobInDB(job) {
     return new Promise((resolve, reject) => {
-        db.query('INSERT INTO images (id, message_id, owner_id) VALUES (?,?, ?)', [job.job_id, job.message_id, job.owner_id], (error, results) => {
+        db.query('INSERT INTO images (id, owner_id) VALUES (?,?)', [job.job_id, job.owner_id], (error, results) => {
             if (error) {
                 reject(error);
             } else {
@@ -226,7 +224,6 @@ async function savePreviewToDb(jobId, preview) {
                 console.error('Preview failed saved to DB!');
             } else {
                 resolve();
-                console.log('Preview saved to DB!');
             }
         });
     });
@@ -236,10 +233,9 @@ async function checkForProgressAndEmit(task) {
     await new Promise((resolve) => {
         axios.get(`${constants.SD_API_HOST}/progress`)
             .then(async response => {
-                // console.log('Progress: ', response.data);
                 await savePreviewToDb(task.job_id, response.data.current_image);
                 io.sockets.emit('task-progress', {
-                    ...task,
+                    ...cleanseTask(task),
                     progress: response.data.progress,
                     eta_relative: response.data.eta_relative,
                     current_step: response.data.state.sampling_step,
@@ -256,7 +252,7 @@ async function checkForProgressAndEmit(task) {
 }
 
 async function processTxt2ImgTask(task) {
-    console.log('Processing txt2img task: ', task);
+    console.log('Processing txt2img task');
     task.status = 'processing';
     let hasQueued = false;
     await new Promise((resolve) => {
@@ -283,38 +279,47 @@ async function processTxt2ImgTask(task) {
                 sd_model_checkpoint: task.model_name
             }
         }).then(async response => {
-            console.log('Response: ', response.data);
             clearInterval(interval);
             console.log("Task finished!");
             if (response.data.images.length > 0) {
-                console.log("Writing image to DB...");
-                // console.log("Image: ", response.data.images[0]);
                 try {
                     await writeImageToDB(task.job_id, response.data.images[0]);
-                    console.log("Image written to DB!");
                     task.status = 'finished';
-                    io.sockets.emit('task-finished', {...task, img_path: "/api/images/" + task.job_id});
+                    io.sockets.emit('task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
                 } catch (error) {
                     console.error('Error writing image to DB: ', error);
                     task.status = 'failed';
-                    io.sockets.emit('task-failed', {...task, error: error});
+                    io.sockets.emit('task-failed', {...cleanseTask(task), error: error});
                 }
             } else {
                 console.log("No images were generated.");
                 task.status = 'failed';
-                io.sockets.emit('task-failed', { ...task, error: 'No images were generated.' });
+                io.sockets.emit('task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
             }
             resolve();
         }).catch(error => {
             console.error('Error: ', error);
             clearInterval(interval);
             console.log("Task failed!");
-            io.sockets.emit('task-failed', { ...task, error: error.message });
+            io.sockets.emit('task-failed', { ...cleanseTask(task), error: error.message });
             resolve();
         });
         hasQueued = true;
 
     });
+}
+
+/*
+    Not all data associated with a task needs to be constantly sent back and forth, strip out the unnecessary data.
+ */
+function cleanseTask(task) {
+    delete task.prompt;
+    delete task.negative_prompt;
+    delete task.owner_id;
+    delete task.width;
+    delete task.height;
+    delete task.seed
+    return task;
 }
 
 module.exports = {router, worker};
