@@ -42,7 +42,7 @@ An example response is as follows:
             "friendly_name": "CyberRealistic XL",
             "hash": "95d17e744f",
             "id": 1,
-            "is_restricted": 0,
+            "is_restricted": false,
             "known": true,
             "model_name": "cyberrealisticXL_v31",
             "sha256": "95d17e744fba748e6d0c55126e60c794fc9c26e563dbf9c98feead78c3731e78",
@@ -54,7 +54,7 @@ An example response is as follows:
             "friendly_name": "Incursios Meme Diffusion",
             "hash": "5e37c6849c",
             "id": 2,
-            "is_restricted": 0,
+            "is_restricted": false,
             "known": true,
             "model_name": "incursiosMemeDiffusion_v27PDXL",
             "sha256": "5e37c6849c2447e9ab180f0de8bd2dc3b4e8ff12460d5cc88e10c438b2712b32",
@@ -106,6 +106,22 @@ After a job is queued, the client should listen to the WebSocket API for updates
 
 Navigator will respond with a JSON object that contains metadata about the job that was queued. This will include the `job_id` field, which is a unique identifier for the job.
 
+A response will look something like this:
+```json
+{
+    "height": 512,
+    "job_id": "59feab77",
+    "model_name": "cyberrealisticXL_v31",
+    "owner_id": "Russ",
+    "prompt": "Puppies",
+    "queue_size": 1,
+    "seed": -1,
+    "status": "queued",
+    "steps": 50,
+    "task_type": "txt2img",
+    "width": 512
+}
+```
 
 ### GET /api/images/:job_id
 

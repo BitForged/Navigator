@@ -42,6 +42,9 @@ router.get('/models', async (req, res) => {
                     const models = response.data.map(model => {
                         const match = results.find(result => result.model_name === model.model_name);
                         if (match) {
+                            // We want to merge the two objects,
+                            // but we also want to make sure that the is_restricted field is a boolean
+                            match.is_restricted = match.is_restricted === 1;
                             return {
                                 ...model,
                                 known: true,
