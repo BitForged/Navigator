@@ -17,6 +17,7 @@ const EMBED_HTML_TEMPLATE = `
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="BitJourney Navigator">
     <meta property="og:image" content="%JOB_IMAGE_URL%">
+    <meta name="twitter:card" content="summary_large_image">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -58,10 +59,10 @@ router.get('/embed/:jobId', async (req, res) => {
         } else {
             const job = rows[0];
             let html = EMBED_HTML_TEMPLATE;
-            let proto = req.protocol;
             html = html.replace(/%title%/g, "BitJourney Job");
             html = html.replace(/%description%/g, "Served by BitJourney Navigator");
-            html = html.replace(/%JOB_IMAGE_URL%/g, `${proto}://${req.headers.host}/api/images/${jobId}`);
+            // We enforce https for the image URL, as Discord requires it.
+            html = html.replace(/%JOB_IMAGE_URL%/g, `https://${req.headers.host}/api/images/${jobId}`);
             res.send(html);
         }
     });
