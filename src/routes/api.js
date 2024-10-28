@@ -146,7 +146,7 @@ router.post('/queue/txt2img', async (req, res) => {
 });
 
 router.get('/images/:jobId', async (req, res) => {
-    const jobId = req.params.jobId;
+    const jobId = req.params.jobId.replace(".png", "");
     db.query('SELECT image_data FROM images WHERE id = ?', [jobId], (error, results) => {
         if (error) {
             res.json({ error: error.message });
@@ -164,7 +164,7 @@ router.get('/images/:jobId', async (req, res) => {
 });
 
 router.get('/previews/:jobId', async (req, res) => {
-    const jobId = req.params.jobId;
+    const jobId = req.params.jobId.replace(".png", "");
     db.query('SELECT preview_data FROM images WHERE id = ?', [jobId], (error, results) => {
         if (error) {
             res.json({ error: error.message });
