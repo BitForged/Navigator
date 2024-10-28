@@ -78,9 +78,13 @@ router.post('/queue/txt2img', async (req, res) => {
         - height (optional, default to 512)
         - steps (optional, default to 50)
         - seed (optional, default to null)
+        - cfg_scale (optional, default to 7)
+        - sampler_name (optional, default to "DPM++ 2M")
+        - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
+        - force_hr_fix (optional, default to false)
       */
 
-    const { model_name, prompt, negative_prompt, owner_id, job_id, width, height, steps, seed } = req.body;
+    const { model_name, prompt, negative_prompt, owner_id, job_id, width, height, steps, seed, cfg_scale, sampler_name, denoising_strength, force_hr_fix } = req.body;
 
     if (!model_name || !prompt || !owner_id) {
         res.json({ error: 'Missing required parameters' });
@@ -97,6 +101,10 @@ router.post('/queue/txt2img', async (req, res) => {
         height: height || 512,
         steps: steps || 50,
         seed: seed || -1,
+        cfg_scale: cfg_scale || 7,
+        sampler_name: sampler_name || "DPM++ 2M",
+        denoising_strength: denoising_strength || 0.0,
+        force_hr_fix: force_hr_fix || false,
         queue_size: queue.length + 1,
         task_type: 'txt2img',
         status: 'queued'
@@ -267,6 +275,12 @@ async function processTxt2ImgTask(task) {
             io.sockets.emit('model-changed', { model_name: task.model_name, job_id: task.job_id });
         }
         lastUsedModel = task.model_name;
+        let hrFix = false;
+        if(task.force_hr_fix !== true) {
+            hrFix = task.denoising_strength !== 0.0;
+        } else {
+            hrFix = true
+        }
         axios.post(`${constants.SD_API_HOST}/txt2img`, {
             prompt: task.prompt,
             negative_prompt: task.negative_prompt,
@@ -274,6 +288,9 @@ async function processTxt2ImgTask(task) {
             steps: task.steps,
             width: task.width,
             height: task.height,
+            cfg_scale: task.cfg_scale,
+            sampler_name: task.sampler_name,
+            enable_hr: hrFix,
             save_images: false,
             override_settings: {
                 sd_model_checkpoint: task.model_name
