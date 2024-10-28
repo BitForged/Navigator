@@ -313,13 +313,14 @@ async function processTxt2ImgTask(task) {
     Not all data associated with a task needs to be constantly sent back and forth, strip out the unnecessary data.
  */
 function cleanseTask(task) {
-    delete task.prompt;
-    delete task.negative_prompt;
-    delete task.owner_id;
-    delete task.width;
-    delete task.height;
-    delete task.seed
-    return task;
+    let cleansedTask = {...task};
+    delete cleansedTask.prompt;
+    delete cleansedTask.negative_prompt;
+    delete cleansedTask.owner_id;
+    delete cleansedTask.width;
+    delete cleansedTask.height;
+    delete cleansedTask.seed
+    return cleansedTask;
 }
 
 module.exports = {router, worker};
