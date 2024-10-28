@@ -148,6 +148,9 @@ The WebSocket API emits the following events:
 
 **Note**: All events will contain a `job_id` field that is unique to the job (that was obtained when the client queued the job), if it is an event related to a job.
 
+`models-refreshed`: This event is emitted when Navigator triggers a refresh of models on the backend, this is done so that downstream clients know to reload their list of available models.
+No actual data is sent with this event.
+
 `model-changed`: This event is emitted when Navigator believes that the Stable Diffusion model needs to be changed on the backend. This indicates that the job might take a bit longer to start.
 The `model_name` field is included, which indicates what Navigator believes the backend is switching to. This is the best guess and may not be accurate.
 The `job_id` field is also included, which indicates what job this change is related to.

@@ -33,6 +33,10 @@ if(process.env.I_DO_NOT_LIKE_FUN !== null) {
      to be aware of, or we might assign it a more user-friendly name, etc.
  */
 router.get('/models', async (req, res) => {
+    if(req.query.refresh === 'true') {
+        await axios.post(`${constants.SD_API_HOST}/refresh-checkpoints`)
+        io.sockets.emit('models-refreshed', { message: 'Models have been refreshed!' });
+    }
     axios.get(`${constants.SD_API_HOST}/sd-models`)
         .then(response => {
             db.query('SELECT * FROM models', (error, results) => {
