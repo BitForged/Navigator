@@ -120,6 +120,16 @@ router.post('/queue/txt2img', async (req, res) => {
         status: 'queued'
     };
 
+    let samplerData = await axios.get(`${constants.SD_API_HOST}/samplers`);
+    for(let i = 0; i < samplerData.data.length; i++) {
+        let sampler = samplerData.data[i];
+        let containsAlias = sampler.aliases.indexOf(job.sampler_name) > -1;
+        if (containsAlias) {
+            job.sampler_name = sampler.name;
+            break;
+        }
+    }
+
     let error = await createImageJobInDB(job);
 
     if (error) {
