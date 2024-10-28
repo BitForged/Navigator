@@ -67,6 +67,16 @@ router.get('/models', async (req, res) => {
         });
 });
 
+router.get('/samplers', async (req, res) => {
+    axios.get(`${constants.SD_API_HOST}/samplers`)
+        .then(response => {
+            res.json(response.data);
+        })
+        .catch(error => {
+            res.json({ error: error.message });
+        });
+});
+
 router.post('/queue/txt2img', async (req, res) => {
      /* For now, we expect the following parameters:
         - model_name
@@ -79,7 +89,7 @@ router.post('/queue/txt2img', async (req, res) => {
         - steps (optional, default to 50)
         - seed (optional, default to null)
         - cfg_scale (optional, default to 7)
-        - sampler_name (optional, default to "DPM++ 2M")
+        - sampler_name (optional, default to "k_dpmpp_2m")
         - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
         - force_hr_fix (optional, default to false)
       */
@@ -102,7 +112,7 @@ router.post('/queue/txt2img', async (req, res) => {
         steps: steps || 50,
         seed: seed || -1,
         cfg_scale: cfg_scale || 7,
-        sampler_name: sampler_name || "DPM++ 2M",
+        sampler_name: sampler_name || "k_dpmpp_2m",
         denoising_strength: denoising_strength || 0.0,
         force_hr_fix: force_hr_fix || false,
         queue_size: queue.length + 1,

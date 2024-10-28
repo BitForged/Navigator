@@ -95,7 +95,7 @@ This endpoint is used to add a task to the queue for generating an image from te
    - steps (optional, default to 50)
    - seed (optional, default to -1 if not provided)
    - cfg_scale (optional, default to 7)
-   - sampler_name (optional, default to "DPM++ 2M")
+   - sampler_name (optional, default to "k_dpmpp_2m")
    - denoising_strength (optional, default to 0.0, if set to anything other than 0.0, Navigator will enforce hr_fix to be true, since denoising is from the hr_fix tool)
    - force_hr_fix (optional, default to false)
  */
