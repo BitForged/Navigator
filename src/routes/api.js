@@ -323,6 +323,10 @@ async function processTxt2ImgTask(task) {
             clearInterval(interval);
             console.log("Task finished!");
             if (response.data.images.length > 0) {
+                let jobInfo = response.data.info;
+                if(jobInfo !== undefined && jobInfo !== null && jobInfo.seed !== undefined && jobInfo.seed !== null) {
+                    task.seed = jobInfo.seed;
+                }
                 try {
                     await writeImageToDB(task.job_id, response.data.images[0]);
                     task.status = 'finished';
@@ -360,7 +364,6 @@ function cleanseTask(task) {
     delete cleansedTask.owner_id;
     delete cleansedTask.width;
     delete cleansedTask.height;
-    delete cleansedTask.seed
     return cleansedTask;
 }
 
