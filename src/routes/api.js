@@ -324,6 +324,7 @@ async function processTxt2ImgTask(task) {
             console.log("Task finished!");
             if (response.data.images.length > 0) {
                 let jobInfo = response.data.info;
+                jobInfo = JSON.parse(jobInfo);
                 if(jobInfo !== undefined && jobInfo !== null && jobInfo.seed !== undefined && jobInfo.seed !== null) {
                     task.seed = jobInfo.seed;
                 }
