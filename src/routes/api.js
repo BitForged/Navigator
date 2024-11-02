@@ -93,7 +93,7 @@ router.post('/queue/txt2img', async (req, res) => {
         - steps (optional, default to 50)
         - seed (optional, default to null)
         - cfg_scale (optional, default to 7)
-        - sampler_name (optional, default to "k_dpmpp_2m")
+        - sampler_name (optional, default to "DPM++ 2M")
         - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
         - force_hr_fix (optional, default to false)
       */
@@ -101,9 +101,16 @@ router.post('/queue/txt2img', async (req, res) => {
     const { model_name, prompt, negative_prompt, owner_id, job_id, width, height, steps, seed, cfg_scale, sampler_name, denoising_strength, force_hr_fix } = req.body;
 
     if (!model_name || !prompt || !owner_id) {
-        res.json({ error: 'Missing required parameters' });
+        res.status(400).json({ error: 'Missing required parameters' });
         return;
     }
+
+    // Ensure that the width and height are within acceptable bounds.
+    if (width > 2048 || height > 2048) {
+        res.status(400).json({ error: 'Width and height must not exceed 2048' });
+        return;
+    }
+
     // TODO: Check if model_name is valid
     const job = {
         model_name,
@@ -116,7 +123,7 @@ router.post('/queue/txt2img', async (req, res) => {
         steps: steps || 50,
         seed: seed || -1,
         cfg_scale: cfg_scale || 7,
-        sampler_name: sampler_name || "k_dpmpp_2m",
+        sampler_name: sampler_name || "DPM++ 2M",
         denoising_strength: denoising_strength || 0.0,
         force_hr_fix: force_hr_fix || false,
         queue_size: queue.length + 1,
@@ -299,13 +306,8 @@ async function processTxt2ImgTask(task) {
             io.sockets.emit('model-changed', { model_name: task.model_name, job_id: task.job_id });
         }
         lastUsedModel = task.model_name;
-        let hrFix = false;
-        if(task.force_hr_fix !== true) {
-            hrFix = task.denoising_strength !== 0.0;
-        } else {
-            hrFix = true
-        }
-        axios.post(`${constants.SD_API_HOST}/txt2img`, {
+
+        let queuedTask = {
             prompt: task.prompt,
             negative_prompt: task.negative_prompt,
             seed: task.seed,
@@ -314,12 +316,40 @@ async function processTxt2ImgTask(task) {
             height: task.height,
             cfg_scale: task.cfg_scale,
             sampler_name: task.sampler_name,
-            enable_hr: hrFix,
+            enable_hr: false,
+            hr_upscaler: "4x_NMKD-Siax_200k",
             save_images: false,
             override_settings: {
                 sd_model_checkpoint: task.model_name
             }
-        }).then(async response => {
+        }
+
+        if(task.denoising_strength) {
+            queuedTask.denoising_strength = task.denoising_strength
+        }
+
+        if(task.force_hr_fix !== true) {
+            queuedTask.enable_hr = task.denoising_strength !== 0.0;
+        } else {
+            queuedTask.enable_hr = true
+        }
+
+        // If the image is past a certain size, we need to enable HR Fix.
+        // This will generate a smaller image, then
+        // upscale it to the desired size.
+        if(task.width * task.height > 1024 * 1024) {
+            queuedTask.enable_hr = true;
+            queuedTask.denoising_strength = 1;
+            queuedTask.hr_resize_x = task.width;
+            queuedTask.hr_resize_y = task.height;
+            // Ensure that we tell the backend to generate the initial image at half the size.
+            // The above will upscale it to the desired size.
+            // This is done because generating an image past a certain size will cause the backend to run out of VRAM,
+            // however, by using HR Fix, we can generate a smaller image and upscale it without running out of VRAM.
+            queuedTask.width /= 2;
+            queuedTask.height /= 2;
+        }
+        axios.post(`${constants.SD_API_HOST}/txt2img`, queuedTask).then(async response => {
             clearInterval(interval);
             console.log("Task finished!");
             if (response.data.images.length > 0) {
