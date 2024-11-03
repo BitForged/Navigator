@@ -1,6 +1,7 @@
 const express = require('express');
 const apiRouter = require('./routes/api');
 const userRouter = require('./routes/user');
+const thirdpartyRouter = require('./thirdparty/router');
 
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
@@ -13,6 +14,7 @@ app.get('/', (req, res) => {
 
 app.use(express.json());
 app.use('/api', apiRouter.router);
+app.use('/3papi', thirdpartyRouter);
 app.use(userRouter)
 
 app.listen(port, () => {
