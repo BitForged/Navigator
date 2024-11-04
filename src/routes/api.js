@@ -106,8 +106,8 @@ router.post('/queue/txt2img', async (req, res) => {
     }
 
     // Ensure that the width and height are within acceptable bounds.
-    if (width > 2048 || height > 2048) {
-        res.status(400).json({ error: 'Width and height must not exceed 2048' });
+    if ((width * height) > (2560 * 1440)) {
+        res.status(400).json({ error: 'The total value of (Width * height) must not exceed ~2K (2560x1440)' });
         return;
     }
 
