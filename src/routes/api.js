@@ -339,9 +339,25 @@ async function processTxt2ImgTask(task) {
         // upscale it to the desired size.
         if(task.width * task.height > 1024 * 1024) {
             queuedTask.enable_hr = true;
-            queuedTask.denoising_strength = 1;
+            // Denoising strength controls how much of the original image can the model "see":
+            // Setting it too high will cause most of the original image
+            // to be lost and a new image to be generated.
+            // But setting it too low will cause other issues, such as blurry images.
+            // Here we choose 0.35 as a good middle ground if the user hasn't provided their own.
+            if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
+                queuedTask.denoising_strength = 0.35;
             queuedTask.hr_resize_x = task.width;
             queuedTask.hr_resize_y = task.height;
+
+            if(queuedTask.enable_hr === true) {
+                // This is the number of steps that the model will use during the HR Fix process.
+                // In my experience, you generally don't need an extremely high number of steps.
+                // We clamp it to a maximum of 30, to prevent excessive wait times.
+                // However, this might be increased in the future.
+                if(queuedTask.steps < 30) {
+                    queuedTask.hr_second_pass_steps = 30;
+                }
+            }
             // Ensure that we tell the backend to generate the initial image at half the size.
             // The above will upscale it to the desired size.
             // This is done because generating an image past a certain size will cause the backend to run out of VRAM,
