@@ -318,6 +318,7 @@ async function processTxt2ImgTask(task) {
             sampler_name: task.sampler_name,
             enable_hr: false,
             hr_upscaler: "4x_NMKD-Siax_200k",
+            hr_additional_modules: [], // Needed for SD Forge WebUI
             save_images: false,
             override_settings: {
                 sd_model_checkpoint: task.model_name
