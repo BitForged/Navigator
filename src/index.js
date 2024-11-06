@@ -1,7 +1,9 @@
 const express = require('express');
 const apiRouter = require('./routes/api');
-const userRouter = require('./routes/user');
+const authRouter = require('./routes/auth');
+const embedRouter = require('./routes/embed');
 const thirdpartyRouter = require('./thirdparty/router');
+const userRouter = require('./routes/user');
 
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
@@ -13,15 +15,25 @@ app.get('/', (req, res) => {
 });
 
 app.use(express.json());
+app.use(allowCors);
 app.use('/api', apiRouter.router);
+app.use('/api/auth', authRouter);
+app.use('/api/user', userRouter);
 app.use('/3papi', thirdpartyRouter);
-app.use(userRouter)
+app.use(embedRouter)
 
 app.listen(port, () => {
     console.log(`Navigator HTTP is running on port ${port}`);
 });
 
 apiRouter.worker();
+
+function allowCors(req, res, next) {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
+    next();
+}
 
 module.exports = {
     SD_API_HOST
