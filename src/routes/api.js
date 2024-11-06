@@ -177,6 +177,29 @@ router.get('/images/:jobId', async (req, res) => {
     });
 });
 
+router.get('/images/:jobId/info', async (req, res) => {
+    const jobId = req.params.jobId;
+    db.query('SELECT * FROM images WHERE id = ?', [jobId], (error, results) => {
+        if (error) {
+            res.json({ error: error.message });
+        } else {
+            if (results.length > 0) {
+                if(results[0].image_data === null) {
+                    res.status(404).json({ error: 'Image not found' });
+                    return;
+                }
+                axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
+                    res.json(response.data);
+                }).catch(error => {
+                    res.status(500).json({ error: error.message });
+                })
+            } else {
+                res.status(404).json({ error: 'Image not found' });
+            }
+        }
+    });
+});
+
 router.get('/previews/:jobId', async (req, res) => {
     const jobId = req.params.jobId.replace(".png", "");
     db.query('SELECT preview_data FROM images WHERE id = ?', [jobId], (error, results) => {
