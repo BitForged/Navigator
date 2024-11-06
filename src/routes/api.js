@@ -74,7 +74,10 @@ router.get('/models', async (req, res) => {
 router.get('/samplers', async (req, res) => {
     axios.get(`${constants.SD_API_HOST}/samplers`)
         .then(response => {
-            res.json(response.data);
+            let samplers = response.data;
+            // Return only the first 25, as that is the limit for Discord auto-complete.
+            samplers = samplers.slice(0, 24);
+            res.json(samplers);
         })
         .catch(error => {
             res.json({ error: error.message });
