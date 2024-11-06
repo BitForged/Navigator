@@ -159,6 +159,10 @@ router.get('/images/:jobId', async (req, res) => {
             res.json({ error: error.message });
         } else {
             if (results.length > 0) {
+                if(results[0].image_data === null) {
+                    res.status(404).json({ error: 'Image not found' });
+                    return;
+                }
                 const data = results[0].image_data.toString();
                 const decodedImage = Buffer.from(data, 'base64');
                 res.writeHead(200, {'Content-Type': 'image/png', 'Content-Length': decodedImage.length});
