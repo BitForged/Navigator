@@ -14,6 +14,8 @@ app.get('/', (req, res) => {
     res.json({ message: 'Hello World!', status: 'online' });
 });
 
+app.set('trust proxy', true);
+
 app.use(express.json());
 app.use(allowCors);
 app.use('/api', apiRouter.router);

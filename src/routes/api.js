@@ -114,6 +114,9 @@ router.post('/queue/txt2img', async (req, res) => {
         return;
     }
 
+    // Get the Request IP Address (via the X-Forwarded-For/CF-Connecting-IP header if present)
+    const requestIP = req.ip;
+
     // TODO: Check if model_name is valid
     const job = {
         model_name,
@@ -131,7 +134,8 @@ router.post('/queue/txt2img', async (req, res) => {
         force_hr_fix: force_hr_fix || false,
         queue_size: queue.length + 1,
         task_type: 'txt2img',
-        status: 'queued'
+        status: 'queued',
+        origin: requestIP
     };
 
     let samplerData = await axios.get(`${constants.SD_API_HOST}/samplers`);
@@ -232,7 +236,7 @@ async function worker() {
             task.status = 'started';
             delete task.queue_size;
             try {
-                io.sockets.emit('task-started', cleanseTask(task));
+                getSocketByIp(task.origin).emit('task-started', cleanseTask(task));
                 await processTxt2ImgTask(task);
             } catch(error) {
                 console.error('Error processing task: ', error);
@@ -303,7 +307,7 @@ async function checkForProgressAndEmit(task) {
         axios.get(`${constants.SD_API_HOST}/progress`)
             .then(async response => {
                 await savePreviewToDb(task.job_id, response.data.current_image);
-                io.sockets.emit('task-progress', {
+                getSocketByIp(task.origin).emit('task-progress', {
                     ...cleanseTask(task),
                     progress: response.data.progress,
                     eta_relative: response.data.eta_relative,
@@ -333,7 +337,7 @@ async function processTxt2ImgTask(task) {
         console.log('Sending task to SD API...');
         let hasModelChanged = lastUsedModel !== task.model_name;
         if(hasModelChanged) {
-            io.sockets.emit('model-changed', { model_name: task.model_name, job_id: task.job_id });
+            getSocketByIp(task.origin).emit('model-changed', { model_name: task.model_name, job_id: task.job_id });
         }
         lastUsedModel = task.model_name;
 
@@ -408,28 +412,51 @@ async function processTxt2ImgTask(task) {
                 try {
                     await writeImageToDB(task.job_id, response.data.images[0]);
                     task.status = 'finished';
-                    io.sockets.emit('task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
+                    getSocketByIp(task.origin).emit('task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
                 } catch (error) {
                     console.error('Error writing image to DB: ', error);
                     task.status = 'failed';
-                    io.sockets.emit('task-failed', {...cleanseTask(task), error: error});
+                    getSocketByIp(task.origin).emit('task-failed', {...cleanseTask(task), error: error});
                 }
             } else {
                 console.log("No images were generated.");
                 task.status = 'failed';
-                io.sockets.emit('task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
+                getSocketByIp(task.origin).emit('task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
             }
             resolve();
         }).catch(error => {
             console.error('Error: ', error);
             clearInterval(interval);
             console.log("Task failed!");
-            io.sockets.emit('task-failed', { ...cleanseTask(task), error: error.message });
+            getSocketByIp(task.origin).emit('task-failed', { ...cleanseTask(task), error: error.message });
             resolve();
         });
         hasQueued = true;
 
     });
+}
+
+function getSocketByIp(ip) {
+    let socket = null;
+    io.sockets.sockets.forEach(s => {
+        // Check if the IP matches the socket's IP
+        if(s.handshake.address === ip) {
+            socket = s;
+            return;
+        }
+        // Check if the X-Forwarded-For or CF-Connecting-IP header matches the socket's IP (for reverse proxies)
+        if(s.handshake.headers['X-Forwarded-For'] === ip) {
+            socket = s;
+            return;
+        }
+        if(s.handshake.headers['CF-Connecting-IP'] === ip) {
+            socket = s;
+        }
+    });
+    if(socket === null) {
+        console.error('Socket not found for IP: ', ip);
+    }
+    return socket;
 }
 
 /*
