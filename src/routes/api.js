@@ -19,7 +19,7 @@ console.log(`Navigator Realtime is running on port ${rtPort}!`);
 
 if(process.env.I_DO_NOT_LIKE_FUN !== null) {
     io.on("connection", (socket) => {
-        console.log(`Charting a course for client ${socket.id}. Steady as she goes!`);
+        console.log(`Charting a course for client ${socket.id} (${socket.handshake.address}). Steady as she goes!`);
         socket.emit("connected", { message: `Welcome aboard! We're navigating uncharted territories together.` });
         socket.on("disconnect", () => {
             console.log(`Client ${socket.id} has set sail for distant shores. Until we meet again!`);
@@ -445,11 +445,11 @@ function getSocketByIp(ip) {
             return;
         }
         // Check if the X-Forwarded-For or CF-Connecting-IP header matches the socket's IP (for reverse proxies)
-        if(s.handshake.headers['X-Forwarded-For'] === ip) {
+        if(s.handshake.headers['x-forwarded-for'] === ip) {
             socket = s;
             return;
         }
-        if(s.handshake.headers['CF-Connecting-IP'] === ip) {
+        if(s.handshake.headers['cf-connecting-ip'] === ip) {
             socket = s;
         }
     });
