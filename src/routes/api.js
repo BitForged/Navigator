@@ -6,6 +6,7 @@ const Server = require('socket.io').Server;
 const db = require('../database').getConnectionPool();
 const router = express.Router();
 const constants = require('../constants');
+const {isAuthenticated} = require("../security");
 
 let lastUsedModel = ""; // TODO: Check the stable diffusion model loaded on the backend to prefill this value at startup.
 const queue = [];
@@ -13,7 +14,11 @@ const semaphore = new Semaphore(1); // Current stable diffusion backend only sup
 
 const rtPort = Number(process.env.RT_API_PORT) || 3334;
 
-const io = new Server(rtPort);
+const io = new Server(rtPort, {
+    cors: {
+        origin: "*",
+    }
+});
 
 console.log(`Navigator Realtime is running on port ${rtPort}!`);
 
@@ -84,24 +89,25 @@ router.get('/samplers', async (req, res) => {
         });
 });
 
-router.post('/queue/txt2img', async (req, res) => {
-     /* For now, we expect the following parameters:
-        - model_name
-        - prompt (the "positive" prompt)
-        - negative_prompt
-        - owner_id
-        - job_id (optional, if not present, generate one)
-        - width (optional, default to 512)
-        - height (optional, default to 512)
-        - steps (optional, default to 50)
-        - seed (optional, default to null)
-        - cfg_scale (optional, default to 7)
-        - sampler_name (optional, default to "DPM++ 2M")
-        - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
-        - force_hr_fix (optional, default to false)
-      */
+async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
 
-    const { model_name, prompt, negative_prompt, owner_id, job_id, width, height, steps, seed, cfg_scale, sampler_name, denoising_strength, force_hr_fix } = req.body;
+    /* For now, we expect the following parameters:
+       - model_name
+       - prompt (the "positive" prompt)
+       - negative_prompt
+       - owner_id
+       - job_id (optional, if not present, generate one)
+       - width (optional, default to 512)
+       - height (optional, default to 512)
+       - steps (optional, default to 50)
+       - seed (optional, default to null)
+       - cfg_scale (optional, default to 7)
+       - sampler_name (optional, default to "DPM++ 2M")
+       - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
+       - force_hr_fix (optional, default to false)
+     */
+
+    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name, denoising_strength, force_hr_fix } = req.body;
 
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
@@ -157,6 +163,23 @@ router.post('/queue/txt2img', async (req, res) => {
 
     queue.push(job);
     res.json(job);
+}
+
+router.post('/queue/txt2img', async (req, res) => {
+    if(req.body.owner_id === undefined) {
+        res.status(400).json({ error: 'Missing required parameters' });
+        return;
+    }
+    await sendTxt2ImgRequestToSDAPI(req, res, req.body.owner_id);
+});
+
+// TODO: This route belongs in user.js, however the queue worker is here (and needs to be moved to a separate file)
+router.post('/queue/user/txt2img', isAuthenticated, async (req, res) => {
+    if(req.user.discord_id === undefined) {
+        res.status(400).json({ error: 'Missing required parameters' });
+        return;
+    }
+    await sendTxt2ImgRequestToSDAPI(req, res, req.user.discord_id);
 });
 
 router.get('/images/:jobId', async (req, res) => {
