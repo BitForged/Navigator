@@ -8,7 +8,7 @@ router.get('/me', security.isAuthenticated, (req, res) => {
 });
 
 router.get('/jobs', security.isAuthenticated, (req, res) => {
-    db.query('SELECT id FROM images WHERE owner_id = ?', [req.user.discord_id], (err, results) => {
+    db.query('SELECT id FROM images WHERE owner_id = ? ORDER BY created_at DESC', [req.user.discord_id], (err, results) => {
         if(err) {
             console.error(err);
             res.status(500).json({ message: 'Internal Server Error' });
