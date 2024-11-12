@@ -259,7 +259,7 @@ async function worker() {
             task.status = 'started';
             delete task.queue_size;
             try {
-                getSocketByIp(task.origin).emit('task-started', cleanseTask(task));
+                emitToSocketsByIp(task.origin, 'task-started', cleanseTask(task));
                 await processTxt2ImgTask(task);
             } catch(error) {
                 console.error('Error processing task: ', error);
@@ -330,7 +330,7 @@ async function checkForProgressAndEmit(task) {
         axios.get(`${constants.SD_API_HOST}/progress`)
             .then(async response => {
                 await savePreviewToDb(task.job_id, response.data.current_image);
-                getSocketByIp(task.origin).emit('task-progress', {
+                emitToSocketsByIp(task.origin, 'task-progress', {
                     ...cleanseTask(task),
                     progress: response.data.progress,
                     eta_relative: response.data.eta_relative,
@@ -360,7 +360,7 @@ async function processTxt2ImgTask(task) {
         console.log('Sending task to SD API...');
         let hasModelChanged = lastUsedModel !== task.model_name;
         if(hasModelChanged) {
-            getSocketByIp(task.origin).emit('model-changed', { model_name: task.model_name, job_id: task.job_id });
+            emitToSocketsByIp(task.origin, 'model-changed', { model_name: task.model_name, job_id: task.job_id });
         }
         lastUsedModel = task.model_name;
 
@@ -435,23 +435,23 @@ async function processTxt2ImgTask(task) {
                 try {
                     await writeImageToDB(task.job_id, response.data.images[0]);
                     task.status = 'finished';
-                    getSocketByIp(task.origin).emit('task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
+                    emitToSocketsByIp(task.origin, 'task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
                 } catch (error) {
                     console.error('Error writing image to DB: ', error);
                     task.status = 'failed';
-                    getSocketByIp(task.origin).emit('task-failed', {...cleanseTask(task), error: error});
+                    emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error});
                 }
             } else {
                 console.log("No images were generated.");
                 task.status = 'failed';
-                getSocketByIp(task.origin).emit('task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
+                emitToSocketsByIp(task.origin, 'task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
             }
             resolve();
         }).catch(error => {
             console.error('Error: ', error);
             clearInterval(interval);
             console.log("Task failed!");
-            getSocketByIp(task.origin).emit('task-failed', { ...cleanseTask(task), error: error.message });
+            emitToSocketsByIp(task.origin, 'task-failed', { ...cleanseTask(task), error: error.message });
             resolve();
         });
         hasQueued = true;
@@ -459,27 +459,33 @@ async function processTxt2ImgTask(task) {
     });
 }
 
-function getSocketByIp(ip) {
-    let socket = null;
+function getSocketsByIp(ip) {
+    let matchedSockets = [];
     io.sockets.sockets.forEach(s => {
         // Check if the IP matches the socket's IP
         if(s.handshake.address === ip) {
-            socket = s;
+            matchedSockets.push(s);
             return;
         }
         // Check if the X-Forwarded-For or CF-Connecting-IP header matches the socket's IP (for reverse proxies)
         if(s.handshake.headers['x-forwarded-for'] === ip) {
-            socket = s;
+            matchedSockets.push(s);
             return;
         }
         if(s.handshake.headers['cf-connecting-ip'] === ip) {
-            socket = s;
+            matchedSockets.push(s);
         }
     });
-    if(socket === null) {
+    if(matchedSockets.length === 0) {
         console.error('Socket not found for IP: ', ip);
     }
-    return socket;
+    return matchedSockets;
+}
+
+function emitToSocketsByIp(ip, event, data) {
+    getSocketsByIp(ip).forEach(s => {
+        s.emit(event, data);
+    });
 }
 
 /*
