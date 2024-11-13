@@ -14,6 +14,8 @@ const semaphore = new Semaphore(1); // Current stable diffusion backend only sup
 
 const rtPort = Number(process.env.RT_API_PORT) || 3334;
 
+let currentJob = null;
+
 const io = new Server(rtPort, {
     cors: {
         origin: "*",
@@ -249,6 +251,25 @@ router.get('/previews/:jobId', async (req, res) => {
     });
 });
 
+router.post('/queue/interrupt/:jobId', isAuthenticated, async (req, res) => {
+    const jobId = req.params.jobId;
+    if(currentJob !== null && currentJob.job_id === jobId) {
+        if(currentJob.owner_id !== req.user.discord_id) {
+            res.status(403).json({ error: 'Unauthorized' });
+            return;
+        }
+        axios.post(`${constants.SD_API_HOST}/interrupt`).then(() => {
+            emitToSocketsByIp(currentJob.origin, 'task-interrupted', cleanseTask(currentJob));
+            res.json({ message: 'Task interrupted' });
+        }).catch(error => {
+            console.error('Error interrupting task: ', error);
+            res.status(500).json({ error: error.message });
+        })
+    } else {
+        res.status(404).json({ error: 'Task not found' });
+    }
+});
+
 async function worker() {
     console.log("Navigator Queue Worker started!");
     while(true) {
@@ -258,6 +279,7 @@ async function worker() {
             const task = queue.shift();
             task.status = 'started';
             delete task.queue_size;
+            currentJob = task;
             try {
                 emitToSocketsByIp(task.origin, 'task-started', cleanseTask(task));
                 await processTxt2ImgTask(task);
