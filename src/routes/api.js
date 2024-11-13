@@ -109,7 +109,8 @@ async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
        - force_hr_fix (optional, default to false)
      */
 
-    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name, denoising_strength, force_hr_fix } = req.body;
+    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+        denoising_strength, force_hr_fix, subseed, subseed_strength } = req.body;
 
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
@@ -145,6 +146,11 @@ async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
         status: 'queued',
         origin: requestIP
     };
+
+    if(subseed && subseed_strength) {
+        job.subseed = subseed;
+        job.subseed_strength = subseed_strength;
+    }
 
     let samplerData = await axios.get(`${constants.SD_API_HOST}/samplers`);
     for(let i = 0; i < samplerData.data.length; i++) {
@@ -272,6 +278,7 @@ router.post('/queue/interrupt/:jobId', isAuthenticated, async (req, res) => {
 
 async function worker() {
     console.log("Navigator Queue Worker started!");
+    //noinspection InfiniteLoopJS
     while(true) {
         await semaphore.acquire();
 
@@ -297,7 +304,7 @@ async function worker() {
 
 function createImageJobInDB(job) {
     return new Promise((resolve, reject) => {
-        db.query('INSERT INTO images (id, owner_id) VALUES (?,?)', [job.job_id, job.owner_id], (error, results) => {
+        db.query('INSERT INTO images (id, owner_id) VALUES (?,?)', [job.job_id, job.owner_id], (error, _) => {
             if (error) {
                 reject(error);
             } else {
@@ -412,6 +419,11 @@ async function processTxt2ImgTask(task) {
             queuedTask.enable_hr = task.denoising_strength !== 0.0;
         } else {
             queuedTask.enable_hr = true
+        }
+
+        if(task.subseed && task.subseed_strength) {
+            queuedTask.subseed = task.subseed;
+            queuedTask.subseed_strength = task.subseed_strength;
         }
 
         // If the image is past a certain size, we need to enable HR Fix.
