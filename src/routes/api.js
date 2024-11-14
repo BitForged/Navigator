@@ -354,6 +354,27 @@ async function savePreviewToDb(jobId, preview) {
     });
 }
 
+async function verifyWorkingOnTask(task) {
+    console.log('Verifying if task is active for ID: ', task.job_id);
+    const reqData = {
+        id_task: "navigator-" + task.job_id,
+        live_preview: false,
+        id_live_preview: -1
+    };
+    console.log("POST: ", reqData);
+    try {
+        const response = await axios.post(`${constants.SD_API_BASE}/internal/progress`, reqData);
+        console.log(response.data);
+        if (response.data === null || response.data === undefined) {
+            return false;
+        }
+        return response.data.active === true;
+    } catch (error) {
+        console.error('Error verifying task: ', error);
+        return false;
+    }
+}
+
 async function checkForProgressAndEmit(task) {
     await new Promise((resolve) => {
         axios.get(`${constants.SD_API_HOST}/progress`)
@@ -384,6 +405,11 @@ async function processTxt2ImgTask(task) {
         const interval = setInterval(async () => {
             if (!hasQueued) return;
             console.log('Checking for progress...');
+            const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
+            if(!isTaskActiveOnBackend) {
+                console.log('Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.');
+                return;
+            }
             await checkForProgressAndEmit(task);
         }, 2500);
         console.log('Sending task to SD API...');
@@ -408,7 +434,8 @@ async function processTxt2ImgTask(task) {
             save_images: false,
             override_settings: {
                 sd_model_checkpoint: task.model_name
-            }
+            },
+            force_task_id: "navigator-" + task.job_id
         }
 
         if(task.denoising_strength) {
