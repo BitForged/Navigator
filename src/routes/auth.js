@@ -17,7 +17,7 @@ router.post('/login', async (req, res) => {
     exchangeCodeForToken(req.body.code).then(async response => {
         const token = response.data.access_token;
         const user = await getUser(token);
-        const jwtToken = jwt.sign({ discord_id: user.data.id }, SECRET_KEY, { expiresIn: '6h' });
+        const jwtToken = jwt.sign({ discord_id: user.data.id }, SECRET_KEY, { expiresIn: '72h' });
         res.json({ token: jwtToken, user: user.data });
     }).catch(err => {
         console.error(err);
