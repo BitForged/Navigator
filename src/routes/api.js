@@ -91,7 +91,7 @@ router.get('/samplers', async (req, res) => {
         });
 });
 
-async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
+async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 
     /* For now, we expect the following parameters:
        - model_name
@@ -109,9 +109,15 @@ async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
        - force_hr_fix (optional, default to false)
      */
 
-    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
-        denoising_strength, force_hr_fix, subseed, subseed_strength } = req.body;
+    if(taskData === undefined) {
+        const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+            denoising_strength, force_hr_fix, subseed, subseed_strength } = req.body;
+        taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+            denoising_strength, force_hr_fix, subseed, subseed_strength };
+    }
 
+    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+        denoising_strength, force_hr_fix, subseed, subseed_strength } = taskData;
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
         return;
@@ -152,6 +158,10 @@ async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
         job.subseed_strength = subseed_strength;
     }
 
+    if(taskData.first_pass_image) {
+        job.first_pass_image = taskData.first_pass_image;
+    }
+
     let samplerData = await axios.get(`${constants.SD_API_HOST}/samplers`);
     for(let i = 0; i < samplerData.data.length; i++) {
         let sampler = samplerData.data[i];
@@ -170,24 +180,118 @@ async function sendTxt2ImgRequestToSDAPI(req, res, owner_id) {
     }
 
     queue.push(job);
-    res.json(job);
+    if(job.first_pass_image) {
+        let cleanedTask = {...job};
+        delete cleanedTask.first_pass_image;
+        // We don't want to send the first pass image to the client, as it's a large base64 string.
+        res.json(job);
+    } else {
+        res.json(job);
+    }
 }
 
 router.post('/queue/txt2img', async (req, res) => {
     if(req.body.owner_id === undefined) {
-        res.status(400).json({ error: 'Missing required parameters' });
+        res.status(400).json({ error: 'Missing authentication data' });
         return;
     }
-    await sendTxt2ImgRequestToSDAPI(req, res, req.body.owner_id);
+    await queueTxt2ImgRequest(req, res, req.body.owner_id);
 });
 
 // TODO: This route belongs in user.js, however the queue worker is here (and needs to be moved to a separate file)
 router.post('/queue/user/txt2img', isAuthenticated, async (req, res) => {
     if(req.user.discord_id === undefined) {
-        res.status(400).json({ error: 'Missing required parameters' });
+        res.status(400).json({ error: 'Missing authentication data' });
         return;
     }
-    await sendTxt2ImgRequestToSDAPI(req, res, req.user.discord_id);
+    await queueTxt2ImgRequest(req, res, req.user.discord_id);
+});
+
+function parseModelNameFromInfo(info) {
+    // Regular expression to match the "Model: " pattern followed by the model name
+    const modelRegex = /Model: ([^,\n]+)/;
+    const match = info.match(modelRegex);
+
+    if (match) {
+        return match[1].trim(); // Extract the captured group and trim whitespace
+    } else {
+        return null; // Model not found
+    }
+
+}
+
+function getImageParams(jobId) {
+    return new Promise((resolve, reject) => {
+        db.query('SELECT * FROM images WHERE id = ?', [jobId], (error, results) => {
+            if (error) {
+                reject(error);
+            } else {
+                if (results.length > 0) {
+                    axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
+                        let imageData = {
+                            width: response.data.parameters["Size-1"],
+                            height: response.data.parameters["Size-2"],
+                            seed: response.data.parameters["Seed"],
+                            cfg_scale: response.data.parameters["CFG scale"],
+                            steps: response.data.parameters["Steps"],
+                            model_name: parseModelNameFromInfo(response.data.info),
+                            prompt: response.data.parameters["Prompt"],
+                            negative_prompt: response.data.parameters["Negative prompt"],
+                            sampler_name: response.data.parameters["Sampler"],
+                            denoising_strength: response.data.parameters["Denoising strength"],
+                            image_data: results[0].image_data.toString()
+                        }
+                        const subseed = response.data.parameters["Variation seed"];
+                        const subseed_strength = response.data.parameters["Variation strength"];
+                        if(subseed !== undefined && subseed !== null) {
+                            imageData.subseed = subseed;
+                        }
+                        if(subseed_strength !== undefined && subseed_strength !== null) {
+                            imageData.subseed_strength = subseed_strength;
+                        }
+                        resolve(imageData);
+                    });
+                } else {
+                    reject('Job not found');
+                }
+            }
+        });
+    });
+}
+
+router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (req, res) => {
+    if(req.user.discord_id === undefined) {
+        res.status(400).json({ error: 'Missing authentication data' });
+        return;
+    }
+    const jobId = req.params.jobId;
+
+    getImageParams(jobId).then(async (params) => {
+        let taskData = {
+            model_name: params.model_name,
+            prompt: params.prompt,
+            negative_prompt: params.negative_prompt,
+            owner_id: req.user.discord_id,
+            width: params.width,
+            height: params.height,
+            steps: params.steps,
+            seed: params.seed,
+            cfg_scale: params.cfg_scale,
+            sampler_name: params.sampler_name,
+            denoising_strength: params.denoising_strength,
+            first_pass_image: params.image_data,
+            force_hr_fix: true,
+            force_upscale: true
+        }
+
+        if(((params.width * 2) * (params.height * 2)) > 2560 * 1440) {
+            res.status(400).json({error: 'Image is too large to upscale'});
+            return;
+        }
+        await queueTxt2ImgRequest(req, res, req.user.discord_id, taskData);
+    }).catch(error => {
+        res.status(400).json({error: error});
+    });
 });
 
 router.get('/images/:jobId', async (req, res) => {
@@ -339,7 +443,6 @@ async function writeImageToDB(jobId, image) {
 async function savePreviewToDb(jobId, preview) {
     return new Promise((resolve, reject) => {
         if(preview === null || preview === undefined) {
-            console.error('Preview is null or undefined!');
             reject('Preview is null or undefined!');
             return;
         }
@@ -355,16 +458,13 @@ async function savePreviewToDb(jobId, preview) {
 }
 
 async function verifyWorkingOnTask(task) {
-    console.log('Verifying if task is active for ID: ', task.job_id);
     const reqData = {
         id_task: "navigator-" + task.job_id,
         live_preview: false,
         id_live_preview: -1
     };
-    console.log("POST: ", reqData);
     try {
         const response = await axios.post(`${constants.SD_API_BASE}/internal/progress`, reqData);
-        console.log(response.data);
         if (response.data === null || response.data === undefined) {
             return false;
         }
@@ -391,8 +491,14 @@ async function checkForProgressAndEmit(task) {
                 resolve();
             })
             .catch(error => {
-                console.error('Error checking for progress: ', error);
-                resolve();
+                if(error === "Preview is null or undefined!") {
+                    // We don't want to spam the console with this error.
+                    // As this error is expected when the preview is not available (due to the backend "warming up").
+                    resolve();
+                } else {
+                    console.error('Error checking for progress: ', error);
+                    resolve();
+                }
             });
     });
 }
@@ -404,7 +510,6 @@ async function processTxt2ImgTask(task) {
     await new Promise((resolve) => {
         const interval = setInterval(async () => {
             if (!hasQueued) return;
-            console.log('Checking for progress...');
             const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
             if(!isTaskActiveOnBackend) {
                 console.log('Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.');
@@ -438,7 +543,7 @@ async function processTxt2ImgTask(task) {
             force_task_id: "navigator-" + task.job_id
         }
 
-        if(task.denoising_strength) {
+        if(task.denoising_strength && task.denoising_strength !== 0.0) {
             queuedTask.denoising_strength = task.denoising_strength
         }
 
@@ -453,10 +558,29 @@ async function processTxt2ImgTask(task) {
             queuedTask.subseed_strength = task.subseed_strength;
         }
 
+        if(task.first_pass_image !== undefined && task.first_pass_image !== null) {
+            queuedTask.firstpass_image = task.first_pass_image;
+            console.log("First pass image found for task: ", task.job_id);
+            console.log(typeof queuedTask.first_pass_image);
+        }
+
+        if(task.force_upscale === true) {
+            console.log("Requested HR Fix+Upscale for task: ", task.job_id);
+            queuedTask.hr_resize_x = task.width * 2;
+            queuedTask.hr_resize_y = task.height * 2;
+            queuedTask.enable_hr = true;
+            if(queuedTask.steps < 30) {
+                queuedTask.hr_second_pass_steps = 30;
+            }
+            if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
+                queuedTask.denoising_strength = 0.35;
+        }
+
         // If the image is past a certain size, we need to enable HR Fix.
         // This will generate a smaller image, then
         // upscale it to the desired size.
-        if(task.width * task.height > 1024 * 1024) {
+        // If the task is already flagged for HR Fix, we don't need to do this.
+        if(!task.force_upscale && task.width * task.height > 1024 * 1024) {
             queuedTask.enable_hr = true;
             // Denoising strength controls how much of the original image can the model "see":
             // Setting it too high will cause most of the original image
@@ -483,6 +607,10 @@ async function processTxt2ImgTask(task) {
             // however, by using HR Fix, we can generate a smaller image and upscale it without running out of VRAM.
             queuedTask.width /= 2;
             queuedTask.height /= 2;
+        }
+        if(queuedTask.denoising_strength === undefined && queuedTask.enable_hr === true) {
+            console.log("Denoising strength is undefined, setting default (0.35)!");
+            queuedTask.denoising_strength = 0.35;
         }
         axios.post(`${constants.SD_API_HOST}/txt2img`, queuedTask).then(async response => {
             clearInterval(interval);
@@ -559,6 +687,9 @@ function cleanseTask(task) {
     delete cleansedTask.owner_id;
     delete cleansedTask.width;
     delete cleansedTask.height;
+    if(cleansedTask.first_pass_image) {
+        delete cleansedTask.first_pass_image;
+    }
     return cleansedTask;
 }
 
