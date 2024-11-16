@@ -294,7 +294,6 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
                 let category = await database.getCategoryById(image.category_id);
                 if(category && category.owner_id === req.user.discord_id) {
                     newCategoryId = category.id;
-                    return;
                 }
             }
         }
