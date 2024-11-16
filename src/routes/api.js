@@ -3,7 +3,8 @@ const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
 const Semaphore = require('../Semaphore');
 const Server = require('socket.io').Server;
-const db = require('../database').getConnectionPool();
+const database = require('../database');
+const db = database.getConnectionPool();
 const router = express.Router();
 const constants = require('../constants');
 const {isAuthenticated} = require("../security");
@@ -111,16 +112,31 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 
     if(taskData === undefined) {
         const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
-            denoising_strength, force_hr_fix, subseed, subseed_strength } = req.body;
+            denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = req.body;
         taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
-            denoising_strength, force_hr_fix, subseed, subseed_strength };
+            denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId };
     }
 
     const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
-        denoising_strength, force_hr_fix, subseed, subseed_strength } = taskData;
+        denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = taskData;
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
         return;
+    }
+
+    // If a category ID was passed, ensure that the user actually owns the category.
+    if(categoryId !== undefined && categoryId !== null) {
+        try {
+            let category = await database.getCategoryById(categoryId);
+            if(!category || category.owner_id !== owner_id) {
+                res.status(403).json({ error: 'Category does not exist or you do not own it' });
+                return;
+            }
+        } catch(err) {
+            console.error(err);
+            res.status(500).json({ error: 'Internal Server Error' });
+            return;
+        }
     }
 
     // Ensure that the width and height are within acceptable bounds.
@@ -150,7 +166,8 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         queue_size: queue.length + 1,
         task_type: 'txt2img',
         status: 'queued',
-        origin: requestIP
+        origin: requestIP,
+        categoryId
     };
 
     if(subseed && subseed_strength) {
@@ -265,6 +282,27 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
         return;
     }
     const jobId = req.params.jobId;
+    let newCategoryId = null;
+
+    try {
+        let image = await database.getImageById(jobId);
+        // Check to see if the image previously had a category assigned to it.
+        // If it did, and the user is also the owner of the category, then we will
+        // assign the upscaled image to the same category.
+        if(image !== null) {
+            if(image.category_id !== null) {
+                let category = await database.getCategoryById(image.category_id);
+                if(category && category.owner_id === req.user.discord_id) {
+                    newCategoryId = category.id;
+                    return;
+                }
+            }
+        }
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal Server Error' });
+        return;
+    }
 
     getImageParams(jobId).then(async (params) => {
         let taskData = {
@@ -281,7 +319,8 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             denoising_strength: params.denoising_strength,
             first_pass_image: params.image_data,
             force_hr_fix: true,
-            force_upscale: true
+            force_upscale: true,
+            categoryId: newCategoryId,
         }
 
         if(((params.width * 2) * (params.height * 2)) > 2560 * 1440) {
@@ -408,7 +447,7 @@ async function worker() {
 
 function createImageJobInDB(job) {
     return new Promise((resolve, reject) => {
-        db.query('INSERT INTO images (id, owner_id) VALUES (?,?)', [job.job_id, job.owner_id], (error, _) => {
+        db.query('INSERT INTO images (id, owner_id, category_id) VALUES (?,?,?)', [job.job_id, job.owner_id, job.categoryId], (error, _) => {
             if (error) {
                 reject(error);
             } else {
