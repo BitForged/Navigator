@@ -7,6 +7,10 @@ class CivitAi {
         this.apiKey = process.env.CIVITAI_API_KEY;
     }
 
+    getApiKey() {
+        return this.apiKey || process.env.CIVITAI_API_KEY;
+    }
+
     getEndpoint(endpoint) {
         return `${this.CIVIT_AI_API_URL}/${endpoint}`;
     }

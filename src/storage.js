@@ -11,19 +11,24 @@ async function getAvailableStorage(path) {
 function downloadFileToPath(url, path) {
     return new Promise(async (resolve, reject) => {
         const file = createWriteStream(path);
-        const resp = await axios.get(url, {
-            responseType: 'stream'
-        });
+        try {
+            const resp = await axios.get(url, {
+                responseType: 'stream'
+            })
+            const stream = resp.data.pipe(file);
 
-        const stream = resp.data.pipe(file);
+            stream.on('finish', () => {
+                resolve();
+            });
 
-        stream.on('finish', () => {
-            resolve();
-        });
-
-        stream.on('error', (err) => {
+            stream.on('error', (err) => {
+                reject(err);
+            });
+        }
+        catch (err) {
             reject(err);
-        });
+        }
+
 
     });
 }

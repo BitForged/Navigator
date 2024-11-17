@@ -1,5 +1,4 @@
 const router = require('express').Router();
-const axios = require('axios');
 const CivitAi = require('./civitai');
 const storage = require('../storage');
 
@@ -37,7 +36,7 @@ router.get('/civitai/download/:modelId', async (req, res) => {
                     res.status(500).json({message: 'Model checkpoint directory not set'});
                     return;
                 }
-                storage.downloadFileToPath(modelData.file.downloadUrl, `${process.env.MODEL_CKPT_DIR}/${modelData.file.name}`).then(() => {
+                storage.downloadFileToPath(`${modelData.file.downloadUrl}?token=${civitai.getApiKey()}`, `${process.env.MODEL_CKPT_DIR}/${modelData.file.name}`).then(() => {
                     res.json({ message: 'Model downloaded' });
                 }).catch(err => {
                     console.error(err);
