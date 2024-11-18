@@ -50,5 +50,17 @@ module.exports = {
         } else {
             return results[0];
         }
+    },
+
+    // We use this to get the metadata for an image, such as the category it belongs to, the owner, etc.
+    // Technically, we could use the regular getImageById function, but that would return the image data itself,
+    // which we don't need, and is a heavy operation.
+    async getImageMetadata(imageId) {
+        let results = await this.asyncQuery('SELECT category_id, created_at, message_id, owner_id FROM images WHERE id = ?', [imageId]);
+        if (results.length === 0) {
+            return null;
+        } else {
+            return results[0];
+        }
     }
 }

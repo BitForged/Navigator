@@ -31,6 +31,16 @@ router.delete(/* /api/user/*/ '/image/:imageId', security.isAuthenticated, (req,
     });
 });
 
+router.get(/* /api/user/*/ '/image/:imageId/meta', security.isAuthenticated, async (req, res) => {
+    let img = await database.getImageMetadata(req.params.imageId)
+    if(img.owner_id !== req.user.discord_id) {
+        res.status(403).json({ message: 'You do not own this image' });
+        return;
+    }
+
+    res.json(img);
+});
+
 router.put(/* /api/user/*/ '/image/:imageId/category', security.isAuthenticated, async (req, res) => {
     if((req.body.categoryId !== 0) && (!req.body.categoryId || !req.params.imageId)) {
         res.status(400).json({message: 'Missing required fields'});
