@@ -62,5 +62,9 @@ module.exports = {
         } else {
             return results[0];
         }
+    },
+
+    async getModels() {
+        return await this.asyncQuery('SELECT * FROM models');
     }
 }

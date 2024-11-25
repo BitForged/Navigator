@@ -8,6 +8,8 @@ const db = database.getConnectionPool();
 const router = express.Router();
 const constants = require('../constants');
 const {isAuthenticated} = require("../security");
+const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName } = require('../util');
+const Img2ImgRequest = require('../models/Img2ImgRequest');
 
 let lastUsedModel = ""; // TODO: Check the stable diffusion model loaded on the backend to prefill this value at startup.
 const queue = [];
@@ -150,6 +152,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 
     // TODO: Check if model_name is valid
     const job = {
+        type: 'txt2img',
         model_name,
         prompt,
         negative_prompt,
@@ -207,6 +210,123 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     }
 }
 
+async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
+    if(taskData === undefined) {
+        const { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
+            denoising_strength, categoryId, init_image, mask } = req.body;
+        taskData = { owner_id, model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
+            denoising_strength, categoryId, init_image, mask };
+    }
+
+    let { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
+        denoising_strength, categoryId, init_image, mask } = taskData;
+    if (!isValidDiffusionRequest(taskData)) {
+        res.status(400).json({ error: 'Missing required parameters' });
+        return;
+    }
+
+    if(sampler_name === undefined || sampler_name === null) {
+        sampler_name = "DPM++ 2M";
+    }
+
+    // If a category ID was passed, ensure that the user actually owns the category.
+    if(categoryId !== undefined && categoryId !== null) {
+        try {
+            if(!await doesUserOwnCategory(owner_id, categoryId)) {
+                res.status(403).json({ error: 'Category does not exist or you do not own it' });
+                return;
+            }
+        } catch(err) {
+            console.error(err);
+            res.status(500).json({ error: 'Internal Server Error' });
+            return;
+        }
+    }
+
+    if(denoising_strength) {
+        if(denoising_strength < 0.0 || denoising_strength > 1.0) {
+            res.status(400).json({ error: 'Denoising strength must be between 0.0 and 1.0' });
+            return;
+        }
+    }
+
+    // Ensure that the width and height are within acceptable bounds.
+    if ((width * height) > (2560 * 1440)) {
+        res.status(400).json({ error: 'The total value of (Width * height) must not exceed ~2K (2560x1440)' });
+        return;
+    }
+
+    // Get the Request IP Address (via the X-Forwarded-For/CF-Connecting-IP header if present)
+    const requestIP = req.ip;
+
+    model_name = await validateModelName(model_name);
+    sampler_name = await validateSamplerName(sampler_name);
+
+    // Create an id for the job
+    const job_id = uuidv4().toString().substring(0, 8);
+
+    // Create a new Img2ImgRequest to attach to the job
+    let backendRequest = null;
+    try {
+        backendRequest = new Img2ImgRequest(job_id, model_name, prompt, negative_prompt, seed, sampler_name, steps,
+            cfg_scale, width, height, init_image, mask);
+        if(denoising_strength) {
+            backendRequest.denoising_strength = denoising_strength;
+            console.log(`Setting denoising strength to ${denoising_strength}`);
+        } else {
+            backendRequest.denoising_strength = 0.75;
+        }
+        await backendRequest.prepareInitialImage()
+    } catch(err) {
+        console.error(err);
+        res.status(500).json({ error: 'Internal Server Error' });
+        return
+    }
+
+
+    // Start constructing a task to be queued
+    const job = {
+        type: 'img2img',
+        job_id,
+        owner_id,
+        queue_size: queue.length + 1,
+        task_type: 'img2img',
+        status: 'queued',
+        origin: requestIP,
+        backendRequest
+    };
+
+    if(categoryId) {
+        job.categoryId = categoryId;
+    }
+
+    // Attempt to allocate a new entry in the database for the job
+    let error = await createImageJobInDB(job);
+    if (error) {
+        res.status(400).json({error: error});
+        return;
+    }
+
+    queue.push(job);
+
+    if(init_image) {
+        let cleanedTask = {...job};
+        delete cleanedTask.backendRequest;
+        // We don't want to send the initial image to the client, in case it's a large base64 string.
+        res.json(cleanedTask);
+    } else {
+        res.json(job);
+    }
+}
+
+router.post('/queue/img2img', async (req, res) => {
+    if(req.body.owner_id === undefined) {
+        res.status(400).json({ error: 'Missing authentication data' });
+        return;
+    }
+    await queueImg2ImgRequest(req, res, req.body.owner_id);
+});
+
 router.post('/queue/txt2img', async (req, res) => {
     if(req.body.owner_id === undefined) {
         res.status(400).json({ error: 'Missing authentication data' });
@@ -215,13 +335,22 @@ router.post('/queue/txt2img', async (req, res) => {
     await queueTxt2ImgRequest(req, res, req.body.owner_id);
 });
 
-// TODO: This route belongs in user.js, however the queue worker is here (and needs to be moved to a separate file)
+// TODO: The next two routes belongs in user.js,
+//  however the queue worker is here (and needs to be moved to a separate file)
 router.post('/queue/user/txt2img', isAuthenticated, async (req, res) => {
     if(req.user.discord_id === undefined) {
         res.status(400).json({ error: 'Missing authentication data' });
         return;
     }
     await queueTxt2ImgRequest(req, res, req.user.discord_id);
+});
+
+router.post('/queue/user/img2img', isAuthenticated, async (req, res) => {
+    if(req.user.discord_id === undefined) {
+        res.status(400).json({ error: 'Missing authentication data' });
+        return;
+    }
+    await queueImg2ImgRequest(req, res, req.user.discord_id);
 });
 
 function parseModelNameFromInfo(info) {
@@ -431,7 +560,11 @@ async function worker() {
             currentJob = task;
             try {
                 emitToSocketsByIp(task.origin, 'task-started', cleanseTask(task));
-                await processTxt2ImgTask(task);
+                if(task.type === 'txt2img') {
+                    await processTxt2ImgTask(task);
+                } else if(task.type === 'img2img') {
+                    await processImg2ImgTask(task);
+                }
             } catch(error) {
                 console.error('Error processing task: ', error);
             } finally {
@@ -598,12 +731,10 @@ async function processTxt2ImgTask(task) {
 
         if(task.first_pass_image !== undefined && task.first_pass_image !== null) {
             queuedTask.firstpass_image = task.first_pass_image;
-            console.log("First pass image found for task: ", task.job_id);
-            console.log(typeof queuedTask.first_pass_image);
         }
 
         if(task.force_upscale === true) {
-            console.log("Requested HR Fix+Upscale for task: ", task.job_id);
+            console.log("Requested HR Fix+Upscale for task confirmed");
             queuedTask.hr_resize_x = task.width * 2;
             queuedTask.hr_resize_y = task.height * 2;
             queuedTask.enable_hr = true;
@@ -647,7 +778,6 @@ async function processTxt2ImgTask(task) {
             queuedTask.height /= 2;
         }
         if(queuedTask.denoising_strength === undefined && queuedTask.enable_hr === true) {
-            console.log("Denoising strength is undefined, setting default (0.35)!");
             queuedTask.denoising_strength = 0.35;
         }
         axios.post(`${constants.SD_API_HOST}/txt2img`, queuedTask).then(async response => {
@@ -683,6 +813,71 @@ async function processTxt2ImgTask(task) {
         });
         hasQueued = true;
 
+    });
+}
+
+async function processImg2ImgTask(task) {
+    console.log('Processing img2img task');
+    task.status = 'processing';
+    let hasQueued = false;
+    await new Promise((resolve) => {
+        const interval = setInterval(async () => {
+            if (!hasQueued) return;
+            const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
+            if (!isTaskActiveOnBackend) {
+                console.log('Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.');
+                return;
+            }
+            await checkForProgressAndEmit(task);
+        }, 2500);
+        console.log('Sending task to SD API...');
+        let hasModelChanged = lastUsedModel !== task.backendRequest.model_name;
+        if (hasModelChanged) {
+            emitToSocketsByIp(task.origin, 'model-changed', {
+                model_name: task.backendRequest.model_name,
+                job_id: task.job_id
+            });
+        }
+        lastUsedModel = task.backendRequest.model_name;
+        task.backendRequest.sendToApi().then(async response => {
+            clearInterval(interval);
+            console.log("Task finished!");
+            if (response.data.images.length > 0) {
+                let jobInfo = response.data.info;
+                jobInfo = JSON.parse(jobInfo);
+                if (jobInfo !== undefined && jobInfo !== null && jobInfo.seed !== undefined && jobInfo.seed !== null) {
+                    task.backendRequest.seed = jobInfo.seed;
+                }
+                try {
+                    await writeImageToDB(task.job_id, response.data.images[0]);
+                    task.status = 'finished';
+                    emitToSocketsByIp(task.origin, 'task-finished', {
+                        ...cleanseTask(task),
+                        img_path: "/api/images/" + task.job_id
+                    });
+                } catch (error) {
+                    console.error('Error writing image to DB: ', error);
+                    task.status = 'failed';
+                    emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error});
+                }
+            } else {
+                console.log("No images were generated.");
+                task.status = 'failed';
+                emitToSocketsByIp(task.origin, 'task-failed', {
+                    ...cleanseTask(task),
+                    error: 'No images were generated.'
+                });
+            }
+            resolve();
+        }).catch(error => {
+            console.error('Error: ', error);
+            clearInterval(interval);
+            console.log("Task failed!");
+            emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error.message});
+            resolve();
+        });
+
+        hasQueued = true;
     });
 }
 
@@ -725,6 +920,9 @@ function cleanseTask(task) {
     delete cleansedTask.owner_id;
     delete cleansedTask.width;
     delete cleansedTask.height;
+    if(cleansedTask.backendRequest) {
+        delete cleansedTask.backendRequest;
+    }
     if(cleansedTask.first_pass_image) {
         delete cleansedTask.first_pass_image;
     }
