@@ -495,6 +495,8 @@ router.get('/images/:jobId/info', async (req, res) => {
                     return;
                 }
                 axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
+                    let paramData = response.data;
+                    paramData.parameters.owner_id = results[0].owner_id;
                     res.json(response.data);
                 }).catch(error => {
                     res.status(500).json({ error: error.message });
