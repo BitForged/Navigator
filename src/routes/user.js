@@ -9,13 +9,45 @@ router.get(/* /api/user/*/ '/me', security.isAuthenticated, (req, res) => {
 });
 
 router.get(/* /api/user/*/ '/jobs', security.isAuthenticated, (req, res) => {
-    db.query('SELECT id, category_id FROM images WHERE owner_id = ? ORDER BY created_at DESC', [req.user.discord_id], (err, results) => {
-        if(err) {
+    // Check if request has a category ID filter
+    let categoryId = req.query.category_id;
+    let categoryFilter = '';
+    if(categoryId && !isNaN(categoryId) && categoryId !== "0") {
+        categoryFilter = 'AND category_id = ?';
+    }
+
+    // Grab a count of all images in the database for the user, to prepare for pagination
+    db.query(`SELECT COUNT(*) AS count FROM images WHERE owner_id = ? ${categoryFilter}`, [req.user.discord_id, categoryId], (err, results) => {
+        if (err) {
             console.error(err);
             res.status(500).json({ message: 'Internal Server Error' });
             return;
         }
-        res.json(results);
+
+        let count = results[0].count;
+        let limit = Number(req.query.limit) || 10;
+        let page = Number(req.query.page) || 1;
+        let offset = (page - 1) * limit;
+        let totalPages = Math.ceil(count / limit);
+        let currentPage = page;
+        let previousPage = currentPage > 1 ? currentPage - 1 : null;
+        let nextPage = currentPage < totalPages ? currentPage + 1 : null;
+
+        db.query('SELECT id, category_id FROM images WHERE owner_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?', [req.user.discord_id, limit, offset], (err, results) => {
+            if (err) {
+                console.error(err);
+                res.status(500).json({ message: 'Internal Server Error' });
+                return;
+            }
+            res.json({
+                count: count,
+                totalPages: totalPages,
+                currentPage: currentPage,
+                previousPage: previousPage,
+                nextPage: nextPage,
+                images: results
+            });
+        });
     });
 });
 
