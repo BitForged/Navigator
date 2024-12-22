@@ -33,21 +33,40 @@ router.get(/* /api/user/*/ '/jobs', security.isAuthenticated, (req, res) => {
         let previousPage = currentPage > 1 ? currentPage - 1 : null;
         let nextPage = currentPage < totalPages ? currentPage + 1 : null;
 
-        db.query('SELECT id, category_id FROM images WHERE owner_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?', [req.user.discord_id, limit, offset], (err, results) => {
-            if (err) {
-                console.error(err);
-                res.status(500).json({ message: 'Internal Server Error' });
-                return;
-            }
-            res.json({
-                count: count,
-                totalPages: totalPages,
-                currentPage: currentPage,
-                previousPage: previousPage,
-                nextPage: nextPage,
-                images: results
+        if(categoryId && !isNaN(categoryId) && categoryId !== "0") {
+            db.query(`SELECT id, category_id FROM images WHERE owner_id = ? AND category_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, [req.user.discord_id, categoryId, limit, offset], (err, results) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ message: 'Internal Server Error' });
+                    return;
+                }
+                res.json({
+                    count: count,
+                    totalPages: totalPages,
+                    currentPage: currentPage,
+                    previousPage: previousPage,
+                    nextPage: nextPage,
+                    images: results
+                });
             });
-        });
+        } else {
+            db.query(`SELECT id, category_id FROM images WHERE owner_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`, [req.user.discord_id, limit, offset], (err, results) => {
+                if (err) {
+                    console.error(err);
+                    res.status(500).json({ message: 'Internal Server Error' });
+                    return;
+                }
+                res.json({
+                    count: count,
+                    totalPages: totalPages,
+                    currentPage: currentPage,
+                    previousPage: previousPage,
+                    nextPage: nextPage,
+                    images: results
+                });
+            });
+        }
+
     });
 });
 
