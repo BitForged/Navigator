@@ -105,6 +105,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
        - width (optional, default to 512)
        - height (optional, default to 512)
        - steps (optional, default to 50)
+       - hrf_steps (optional, default to `steps`)
        - seed (optional, default to null)
        - cfg_scale (optional, default to 7)
        - sampler_name (optional, default to "DPM++ 2M")
@@ -113,13 +114,13 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
      */
 
     if(taskData === undefined) {
-        const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+        const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
             denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = req.body;
-        taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+        taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
             denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId };
     }
 
-    const { model_name, prompt, negative_prompt, job_id, width, height, steps, seed, cfg_scale, sampler_name,
+    const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
         denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = taskData;
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
@@ -161,6 +162,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         width: width || 512,
         height: height || 512,
         steps: steps || 50,
+        hrf_steps: hrf_steps || steps,
         seed: seed || -1,
         cfg_scale: cfg_scale || 7,
         sampler_name: sampler_name || "DPM++ 2M",
@@ -441,6 +443,7 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             width: params.width,
             height: params.height,
             steps: params.steps,
+            hrf_steps: params.hrf_steps || params.steps,
             seed: params.seed,
             cfg_scale: params.cfg_scale,
             sampler_name: params.sampler_name,
@@ -740,9 +743,8 @@ async function processTxt2ImgTask(task) {
             queuedTask.hr_resize_x = task.width * 2;
             queuedTask.hr_resize_y = task.height * 2;
             queuedTask.enable_hr = true;
-            if(queuedTask.steps < 30) {
-                queuedTask.hr_second_pass_steps = 30;
-            }
+            queuedTask.hr_second_pass_steps = queuedTask.hr_second_pass_steps.clamp(task.hrf_steps, task.steps);
+
             if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
                 queuedTask.denoising_strength = 0.35;
         }
@@ -768,7 +770,7 @@ async function processTxt2ImgTask(task) {
                 // In my experience, you generally don't need an extremely high number of steps.
                 // We clamp it to a maximum of 30, to prevent excessive wait times.
                 // However, this might be increased in the future.
-                if(queuedTask.steps < 30) {
+                if(queuedTask.steps > 30) {
                     queuedTask.hr_second_pass_steps = 30;
                 }
             }
