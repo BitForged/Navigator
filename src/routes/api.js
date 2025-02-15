@@ -11,7 +11,7 @@ const {isAuthenticated} = require("../security");
 const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName } = require('../util');
 const Img2ImgRequest = require('../models/Img2ImgRequest');
 
-let lastUsedModel = ""; // TODO: Check the stable diffusion model loaded on the backend to prefill this value at startup.
+let lastUsedModel = "";
 const queue = [];
 const semaphore = new Semaphore(1); // Current stable diffusion backend only supports 1 concurrent request
 
@@ -36,6 +36,17 @@ if(process.env.I_DO_NOT_LIKE_FUN !== null) {
         });
     });
 }
+
+axios.get(`${constants.SD_API_HOST}/options`).then(response => {
+    const options = response.data;
+    if(options.sd_model_checkpoint) {
+        lastUsedModel = options.sd_model_checkpoint;
+        console.log("Updated last used SD model reference.");
+    }
+}).catch(error => {
+    console.error(error);
+    console.error("Failed to get last used SD model checkpoint from SD API. Continuing without it.");
+})
 
 /*
     The goal of this route is to grab a list of models from the SD API, and also compare it to a list of models that we
