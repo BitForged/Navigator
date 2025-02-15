@@ -16,7 +16,7 @@ app.get('/', (req, res) => {
 
 app.set('trust proxy', true);
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' })); // Limit increased to 50mb due to large image (Img2Img) uploads
 app.use(allowCors);
 app.use('/api', apiRouter.router);
 app.use('/api/auth', authRouter);
