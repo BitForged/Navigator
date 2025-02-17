@@ -752,6 +752,12 @@ async function checkForProgressAndEmit(task) {
 async function processTxt2ImgTask(task) {
     console.log('Processing txt2img task');
     task.status = 'processing';
+    console.log(task.upscaler_name);
+    // Fix upscaler name if it's not provided
+    if(task.upscaler_name === undefined || task.upscaler_name === null) {
+        task.upscaler_name = await validateUpscalerName(task.model_name); // Passed in value doesn't matter here, it'll pick one
+        console.log('Upscaler name not provided, using default: ' + task.upscaler_name);
+    }
     let hasQueued = false;
     await new Promise((resolve) => {
         const interval = setInterval(async () => {
@@ -813,7 +819,7 @@ async function processTxt2ImgTask(task) {
             queuedTask.hr_resize_x = task.width * 2;
             queuedTask.hr_resize_y = task.height * 2;
             queuedTask.enable_hr = true;
-            queuedTask.hr_second_pass_steps = task.hrf_steps.clamp(task.hrf_steps, task.steps);
+            queuedTask.hr_second_pass_steps = clamp(task.hrf_steps, task.hrf_steps, task.steps);
 
             if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
                 queuedTask.denoising_strength = 0.35;
@@ -839,10 +845,7 @@ async function processTxt2ImgTask(task) {
             // In my experience, you generally don't need an extremely high number of steps.
             // We clamp it to a maximum of 30, to prevent excessive wait times.
             // However, this might be increased in the future.
-            if(queuedTask.steps > 30) {
-                queuedTask.hr_second_pass_steps = 30;
-            }
-            queuedTask.hr_second_pass_steps = queuedTask.steps.clamp(queuedTask.steps, 30);
+            queuedTask.hr_second_pass_steps = clamp(queuedTask.steps, queuedTask.steps, 30);
 
             // Ensure that we tell the backend to generate the initial image at half the size.
             // The above will upscale it to the desired size.
@@ -1004,6 +1007,22 @@ function cleanseTask(task) {
         delete cleansedTask.first_pass_image;
     }
     return cleansedTask;
+}
+
+/**
+ * Returns a number whose value is limited to the given range.
+ *
+ * Example: limit the output of this computation to between 0 and 255
+ * (x * 255).clamp(0, 255)
+ *
+ * @param {Number} value The base value to compare against
+ * @param {Number} min The lower boundary of the output range
+ * @param {Number} max The upper boundary of the output range
+ * @returns A number in the range [min, max]
+ * @type Number
+ */
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
 }
 
 module.exports = {router, worker};
