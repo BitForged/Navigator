@@ -96,14 +96,39 @@ router.get('/samplers', async (req, res) => {
     axios.get(`${constants.SD_API_HOST}/samplers`)
         .then(response => {
             let samplers = response.data;
-            // Return only the first 25, as that is the limit for Discord auto-complete.
-            samplers = samplers.slice(0, 24);
+            if(req.query.all === undefined) {
+                // Return only the first 25, as that is the limit for Discord auto-complete.
+                samplers = samplers.slice(0, 24);
+            }
             res.json(samplers);
         })
         .catch(error => {
             res.json({ error: error.message });
         });
 });
+
+router.get('/upscalers', async (req, res) => {
+    axios.get(`${constants.SD_API_HOST}/upscalers`)
+        .then(response => {
+            let upscalers = response.data;
+            // The backend API returns an upscaler called "None", we can exclude that from the list
+            upscalers = upscalers.filter(upscaler => upscaler.name !== 'None');
+            res.json(upscalers);
+        })
+        .catch(error => {
+            res.json({ error: error.message });
+        })
+})
+
+router.get('/schedulers', async (req, res) => {
+    axios.get(`${constants.SD_API_HOST}/schedulers`)
+        .then(response => {
+            res.json(response.data);
+        })
+        .catch(error => {
+            res.json({ error: error.message });
+        })
+})
 
 async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 
