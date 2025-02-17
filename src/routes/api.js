@@ -148,7 +148,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
        - cfg_scale (optional, default to 7)
        - sampler_name (optional, default to "DPM++ 2M")
        - scheduler_name (optional, default to "automatic")
-       - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
+       - denoising_strength (optional, default to 0.35 when hr_fix is enabled)
        - force_hr_fix (optional, default to false)
        - upscaler_name (optional, will check if "4x_NMKD-Siax_200k" exists - if not, fall back to a built-in ("RealESRGAN_x4"))
      */
@@ -509,12 +509,19 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             denoising_strength: params.denoising_strength,
             first_pass_image: params.image_data,
             force_hr_fix: true,
-            force_upscale: true,
             categoryId: newCategoryId,
         }
 
         if(req.body.upscaler_name !== undefined && req.body.upscaler_name !== null) {
             taskData.upscaler_name = req.body.upscaler_name;
+        }
+
+        if(req.body.denoising_strength !== undefined && req.body.denoising_strength !== null) {
+            taskData.denoising_strength = req.body.denoising_strength;
+        }
+
+        if(req.body.hrf_steps !== undefined && req.body.hrf_steps !== null) {
+            taskData.hrf_steps = req.body.hrf_steps;
         }
 
         if(((params.width * 2) * (params.height * 2)) > 2560 * 1440) {
@@ -780,6 +787,7 @@ async function processTxt2ImgTask(task) {
             override_settings: {
                 sd_model_checkpoint: task.model_name
             },
+            override_settings_restore_afterwards: false,
             force_task_id: "navigator-" + task.job_id
         }
 
@@ -787,9 +795,7 @@ async function processTxt2ImgTask(task) {
             queuedTask.denoising_strength = task.denoising_strength
         }
 
-        if(task.force_hr_fix !== true) {
-            queuedTask.enable_hr = task.denoising_strength !== 0.0;
-        } else {
+        if(task.force_hr_fix === true) {
             queuedTask.enable_hr = true
         }
 
@@ -802,12 +808,12 @@ async function processTxt2ImgTask(task) {
             queuedTask.firstpass_image = task.first_pass_image;
         }
 
-        if(task.force_upscale === true) {
+        if(task.force_hr_fix === true) {
             console.log("Requested HR Fix+Upscale for task confirmed");
             queuedTask.hr_resize_x = task.width * 2;
             queuedTask.hr_resize_y = task.height * 2;
             queuedTask.enable_hr = true;
-            queuedTask.hr_second_pass_steps = queuedTask.hr_second_pass_steps.clamp(task.hrf_steps, task.steps);
+            queuedTask.hr_second_pass_steps = task.hrf_steps.clamp(task.hrf_steps, task.steps);
 
             if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
                 queuedTask.denoising_strength = 0.35;
@@ -817,7 +823,7 @@ async function processTxt2ImgTask(task) {
         // This will generate a smaller image, then
         // upscale it to the desired size.
         // If the task is already flagged for HR Fix, we don't need to do this.
-        if(!task.force_upscale && task.width * task.height > 1024 * 1024) {
+        if(!task.force_hr_fix && task.width * task.height > 1024 * 1024) {
             queuedTask.enable_hr = true;
             // Denoising strength controls how much of the original image can the model "see":
             // Setting it too high will cause most of the original image
@@ -829,21 +835,24 @@ async function processTxt2ImgTask(task) {
             queuedTask.hr_resize_x = task.width;
             queuedTask.hr_resize_y = task.height;
 
-            if(queuedTask.enable_hr === true) {
-                // This is the number of steps that the model will use during the HR Fix process.
-                // In my experience, you generally don't need an extremely high number of steps.
-                // We clamp it to a maximum of 30, to prevent excessive wait times.
-                // However, this might be increased in the future.
-                if(queuedTask.steps > 30) {
-                    queuedTask.hr_second_pass_steps = 30;
-                }
+            // This is the number of steps that the model will use during the HR Fix process.
+            // In my experience, you generally don't need an extremely high number of steps.
+            // We clamp it to a maximum of 30, to prevent excessive wait times.
+            // However, this might be increased in the future.
+            if(queuedTask.steps > 30) {
+                queuedTask.hr_second_pass_steps = 30;
             }
+            queuedTask.hr_second_pass_steps = queuedTask.steps.clamp(queuedTask.steps, 30);
+
             // Ensure that we tell the backend to generate the initial image at half the size.
             // The above will upscale it to the desired size.
             // This is done because generating an image past a certain size will cause the backend to run out of VRAM,
             // however, by using HR Fix, we can generate a smaller image and upscale it without running out of VRAM.
             queuedTask.width /= 2;
             queuedTask.height /= 2;
+            // Round up the new width/height because SD backend does not accept decimal/floating point values for these
+            queuedTask.width = Math.ceil(queuedTask.width);
+            queuedTask.height = Math.ceil(queuedTask.height);
         }
         if(queuedTask.denoising_strength === undefined && queuedTask.enable_hr === true) {
             queuedTask.denoising_strength = 0.35;
