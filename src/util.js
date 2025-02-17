@@ -53,9 +53,46 @@ async function validateSamplerName(samplerName) {
     return samplers[0].name;
 }
 
+async function validateSchedulerName(schedulerName) {
+    let response = await axios.get(`${constants.SD_API_HOST}/schedulers`);
+    let schedulers = response.data;
+    for(let scheduler of schedulers) {
+        if(scheduler.name === schedulerName) {
+            return schedulerName;
+        }
+    }
+
+    // If none matched, then just fall back to "automatic"
+    return "automatic";
+}
+
+async function validateUpscalerName(upscalerName) {
+    let response = await axios.get(`${constants.SD_API_HOST}/upscalers`);
+    let upscalers = response.data;
+    for(let upscaler of upscalers) {
+        if(upscaler.name === upscalerName) {
+            return upscalerName;
+        }
+    }
+
+    // Check if "4x_NMKD-Siax_200k" exists, and use that if so - unless that was already the one that we tried earlier
+    if(upscalerName !== "4x_NMKD-Siax_200k") {
+        for(let upscaler of upscalers) {
+            if(upscaler.name === "4x_NMKD-Siax_200k") {
+                return "4x_NMKD-Siax_200k";
+            }
+        }
+    }
+
+    // The previous upscalers provided did not match - fall back to "RealESRGAN_x4"
+    return "RealESRGAN_x4";
+}
+
 module.exports = {
     isValidDiffusionRequest,
     doesUserOwnCategory,
     validateModelName,
-    validateSamplerName
+    validateSamplerName,
+    validateSchedulerName,
+    validateUpscalerName
 }

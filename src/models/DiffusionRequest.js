@@ -1,5 +1,5 @@
 module.exports = class DiffusionRequest {
-    constructor(id, model_name, prompt, negative_prompt, seed, sampler_name, steps, cfg_scale, width, height) {
+    constructor(id, model_name, prompt, negative_prompt, seed, sampler_name, scheduler_name, steps, cfg_scale, width, height) {
         this.id = id;
         this.model_name = model_name;
         this.prompt = prompt
@@ -8,6 +8,7 @@ module.exports = class DiffusionRequest {
         this.subseed = -1;
         this.subseed_strength = 0;
         this.sampler_name = sampler_name;
+        this.scheduler_name = scheduler_name;
         this.steps = steps || 50;
         this.cfg_scale = cfg_scale || 5;
         this.width = width || 500;

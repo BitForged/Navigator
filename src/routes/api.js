@@ -8,7 +8,9 @@ const db = database.getConnectionPool();
 const router = express.Router();
 const constants = require('../constants');
 const {isAuthenticated} = require("../security");
-const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName } = require('../util');
+const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName, validateSchedulerName,
+    validateUpscalerName
+} = require('../util');
 const Img2ImgRequest = require('../models/Img2ImgRequest');
 
 let lastUsedModel = "";
@@ -145,19 +147,21 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
        - seed (optional, default to null)
        - cfg_scale (optional, default to 7)
        - sampler_name (optional, default to "DPM++ 2M")
+       - scheduler_name (optional, default to "automatic")
        - denoising_strength (optional, default to 0.0, if set will activate hr_fix)
        - force_hr_fix (optional, default to false)
+       - upscaler_name (optional, will check if "4x_NMKD-Siax_200k" exists - if not, fall back to a built-in ("RealESRGAN_x4"))
      */
 
     if(taskData === undefined) {
         const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-            denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = req.body;
+            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name } = req.body;
         taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-            denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId };
+            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name };
     }
 
     const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-        denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId } = taskData;
+        scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name } = taskData;
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
         return;
@@ -187,6 +191,14 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     // Get the Request IP Address (via the X-Forwarded-For/CF-Connecting-IP header if present)
     const requestIP = req.ip;
 
+    let validatedSchedulerName;
+    if(scheduler_name === undefined || scheduler_name === null) {
+        // Fall back to the "Automatic" scheduler if none was supplied
+        validatedSchedulerName = "automatic";
+    } else {
+        validatedSchedulerName = await validateSchedulerName(scheduler_name);
+    }
+
     // TODO: Check if model_name is valid
     const job = {
         type: 'txt2img',
@@ -202,6 +214,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         seed: seed || -1,
         cfg_scale: cfg_scale || 7,
         sampler_name: sampler_name || "DPM++ 2M",
+        scheduler_name: validatedSchedulerName,
         denoising_strength: denoising_strength || 0.0,
         force_hr_fix: force_hr_fix || false,
         queue_size: queue.length + 1,
@@ -230,6 +243,13 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         }
     }
 
+    if(upscaler_name !== undefined && upscaler_name !== null) {
+        let validatedUpscalerName = await validateUpscalerName(upscaler_name);
+        if(validatedUpscalerName) {
+            job.upscaler_name = validatedUpscalerName;
+        }
+    }
+
     let error = await createImageJobInDB(job);
 
     if (error) {
@@ -250,13 +270,13 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 
 async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
     if(taskData === undefined) {
-        const { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
+        const { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name, scheduler_name,
             denoising_strength, categoryId, init_image, mask } = req.body;
         taskData = { owner_id, model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
-            denoising_strength, categoryId, init_image, mask };
+            scheduler_name, denoising_strength, categoryId, init_image, mask };
     }
 
-    let { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
+    let { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name, scheduler_name,
         denoising_strength, categoryId, init_image, mask } = taskData;
     if (!isValidDiffusionRequest(taskData)) {
         res.status(400).json({ error: 'Missing required parameters' });
@@ -299,6 +319,7 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
 
     model_name = await validateModelName(model_name);
     sampler_name = await validateSamplerName(sampler_name);
+    scheduler_name = await validateSchedulerName(scheduler_name || "automatic");
 
     // Create an id for the job
     const job_id = uuidv4().toString().substring(0, 8);
@@ -306,7 +327,7 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
     // Create a new Img2ImgRequest to attach to the job
     let backendRequest = null;
     try {
-        backendRequest = new Img2ImgRequest(job_id, model_name, prompt, negative_prompt, seed, sampler_name, steps,
+        backendRequest = new Img2ImgRequest(job_id, model_name, prompt, negative_prompt, seed, sampler_name, scheduler_name, steps,
             cfg_scale, width, height, init_image, mask);
         if(denoising_strength) {
             backendRequest.denoising_strength = denoising_strength;
@@ -422,6 +443,7 @@ function getImageParams(jobId) {
                             prompt: response.data.parameters["Prompt"],
                             negative_prompt: response.data.parameters["Negative prompt"],
                             sampler_name: response.data.parameters["Sampler"],
+                            scheduler_name: response.data.parameters["Schedule type"],
                             denoising_strength: response.data.parameters["Denoising strength"],
                             image_data: results[0].image_data.toString()
                         }
@@ -483,11 +505,16 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             seed: params.seed,
             cfg_scale: params.cfg_scale,
             sampler_name: params.sampler_name,
+            scheduler_name: params.scheduler_name,
             denoising_strength: params.denoising_strength,
             first_pass_image: params.image_data,
             force_hr_fix: true,
             force_upscale: true,
             categoryId: newCategoryId,
+        }
+
+        if(req.body.upscaler_name !== undefined && req.body.upscaler_name !== null) {
+            taskData.upscaler_name = req.body.upscaler_name;
         }
 
         if(((params.width * 2) * (params.height * 2)) > 2560 * 1440) {
@@ -745,8 +772,9 @@ async function processTxt2ImgTask(task) {
             height: task.height,
             cfg_scale: task.cfg_scale,
             sampler_name: task.sampler_name,
+            scheduler: task.scheduler_name,
             enable_hr: false,
-            hr_upscaler: "4x_NMKD-Siax_200k",
+            hr_upscaler: task.upscaler_name,
             hr_additional_modules: [], // Needed for SD Forge WebUI
             save_images: false,
             override_settings: {

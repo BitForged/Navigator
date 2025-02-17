@@ -4,7 +4,7 @@ const constants = require('../constants');
 const axios = require('axios');
 
 module.exports = class Img2ImgRequest extends DiffusionRequest {
-    constructor(id, model_name, prompt, negative_prompt, seed, sampler_name, steps, cfg_scale,
+    constructor(id, model_name, prompt, negative_prompt, seed, sampler_name, scheduler_name, steps, cfg_scale,
                 width, height, initial_image, mask) {
         super(id, model_name, prompt, negative_prompt, seed, sampler_name, steps, cfg_scale, width, height);
         this.initial_image = initial_image;
@@ -53,6 +53,7 @@ module.exports = class Img2ImgRequest extends DiffusionRequest {
             subseed: this.subseed,
             subseed_strength: this.subseed_strength,
             sampler_name: this.sampler_name,
+            scheduler: this.scheduler_name,
             steps: this.steps,
             cfg_scale: this.cfg_scale,
             width: this.width,
