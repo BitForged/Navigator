@@ -10,7 +10,8 @@ module.exports = {
                 host: process.env.DB_HOST || 'localhost',
                 user: process.env.DB_USER || 'bitjourney',
                 password: process.env.DB_PASSWORD || 'password',
-                database: process.env.DB_NAME || 'bitjourney'
+                database: process.env.DB_NAME || 'bitjourney',
+                multipleStatements: true
             });
             return this.db;
         } else {

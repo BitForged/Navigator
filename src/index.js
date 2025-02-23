@@ -4,11 +4,17 @@ const authRouter = require('./routes/auth');
 const embedRouter = require('./routes/embed');
 const thirdpartyRouter = require('./thirdparty/router');
 const userRouter = require('./routes/user');
+const migrations = require('./migrations');
 
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
 
-const SD_API_HOST = process.env.SD_API_HOST || "http://192.168.2.165:7860/sdapi/v1"
+const SD_API_HOST = process.env.SD_API_HOST || "http://192.168.2.165:7860/sdapi/v1";
+
+(async () => {
+    await migrations.runMigrations();
+    console.log('Migrations Completed');
+})();
 
 app.get('/', (req, res) => {
     res.json({ message: 'Hello World!', status: 'online' });
