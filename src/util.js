@@ -2,6 +2,12 @@ const database = require('./database');
 const constants = require('./constants');
 const axios = require('axios');
 
+// Samplers, Schedulers, and Upscaler Models do not really change, we can keep a cache of these to avoid
+//  needing to hit the backend API for these with every single validation request.
+let samplerCache = [];
+let schedulerCache = [];
+let upscalerCache = [];
+
 function isValidDiffusionRequest(task_data) {
     return !(!task_data.owner_id || !task_data.model_name || !task_data.prompt);
 }
@@ -38,28 +44,54 @@ async function validateModelName(modelName) {
 // Specifically, it will also attempt to see if the provided sampler name matches a sampler alias, and if so, it will
 // return the actual sampler name. If the provided sampler name does not exist, it will return the first sampler.
 async function validateSamplerName(samplerName) {
-    let response = await axios.get(`${constants.SD_API_HOST}/samplers`);
-    let samplers = response.data;
-    for(let sampler of samplers) {
-        if(sampler.name === samplerName) {
-            return samplerName;
+    if(samplerCache.length > 0) {
+        for(let sampler of samplerCache) {
+            if(sampler.name === samplerName) {
+                return samplerName;
+            }
+            if(sampler.aliases.includes(samplerName)) {
+                return sampler.name;
+            }
         }
-        if(sampler.aliases.includes(samplerName)) {
-            return sampler.name;
+    } else {
+        let response = await axios.get(`${constants.SD_API_HOST}/samplers`);
+        let samplers = response.data;
+        for(let sampler of samplers) {
+            if(sampler.name === samplerName) {
+                return samplerName;
+            }
+            if(sampler.aliases.includes(samplerName)) {
+                return sampler.name;
+            }
         }
+        // Update cache of samplers
+        samplerCache = samplers;
+        console.log("Sampler cache updated!");
     }
 
     // If the sampler name was not found in the above, return the first sampler name from the API
-    return samplers[0].name;
+    return samplerCache[0].name;
 }
 
 async function validateSchedulerName(schedulerName) {
-    let response = await axios.get(`${constants.SD_API_HOST}/schedulers`);
-    let schedulers = response.data;
-    for(let scheduler of schedulers) {
-        if(scheduler.name === schedulerName) {
-            return schedulerName;
+    if(schedulerCache.length > 0) {
+        for(let scheduler of schedulerCache) {
+            if(scheduler.name === schedulerName) {
+                return scheduler;
+            }
         }
+    } else {
+        let response = await axios.get(`${constants.SD_API_HOST}/schedulers`);
+        let schedulers = response.data;
+        for(let scheduler of schedulers) {
+            if(scheduler.name === schedulerName) {
+                return schedulerName;
+            }
+        }
+
+        // Update local scheduler cache
+        schedulerCache = schedulers;
+        console.log("Scheduler cache updated!");
     }
 
     // If none matched, then just fall back to "automatic"
@@ -67,17 +99,28 @@ async function validateSchedulerName(schedulerName) {
 }
 
 async function validateUpscalerName(upscalerName) {
-    let response = await axios.get(`${constants.SD_API_HOST}/upscalers`);
-    let upscalers = response.data;
-    for(let upscaler of upscalers) {
-        if(upscaler.name === upscalerName) {
-            return upscalerName;
+    if(upscalerName.length > 0) {
+        for(let upscaler of upscalerCache) {
+            if(upscaler.name === upscalerName) {
+                return upscaler.name;
+            }
         }
+    } else {
+        let response = await axios.get(`${constants.SD_API_HOST}/upscalers`);
+        let upscalers = response.data;
+        for(let upscaler of upscalers) {
+            if(upscaler.name === upscalerName) {
+                return upscalerName;
+            }
+        }
+        // Update local upscaler cache
+        upscalerCache = upscalers;
+        console.log("Upscaler cache updated!");
     }
 
     // Check if "4x_NMKD-Siax_200k" exists, and use that if so - unless that was already the one that we tried earlier
     if(upscalerName !== "4x_NMKD-Siax_200k") {
-        for(let upscaler of upscalers) {
+        for(let upscaler of upscalerCache) {
             if(upscaler.name === "4x_NMKD-Siax_200k") {
                 return "4x_NMKD-Siax_200k";
             }
