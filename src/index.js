@@ -6,6 +6,8 @@ const embedRouter = require('./routes/embed');
 const thirdpartyRouter = require('./thirdparty/router');
 const userRouter = require('./routes/user');
 const migrations = require('./migrations');
+const worker = require('./processing/queueWorker').worker;
+const socketManager = require('./processing/socketManager');
 
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
@@ -60,7 +62,9 @@ app.listen(port, () => {
     console.log(`Navigator HTTP is running on port ${port}`);
 });
 
-apiRouter.worker();
+socketManager.startWsServer();
+// noinspection JSIgnoredPromiseFromCall
+worker();
 
 function allowCors(req, res, next) {
     res.header("Access-Control-Allow-Origin", "*");

@@ -126,6 +126,29 @@ function getAlwaysOnScripts(hasFreeU, hasSAG) {
     return alwaysOnScripts;
 }
 
+/**
+ * Removes specific properties from the provided task object to create a cleansed version. Some properties aren't
+ *  necessary to send back and forth across the network.
+ *
+ * @param {Object} task - The task object to be cleansed.
+ * @return {Object} A new object derived from the input task with certain properties removed.
+ */
+function cleanseTask(task) {
+    let cleansedTask = {...task};
+    delete cleansedTask.prompt;
+    delete cleansedTask.negative_prompt;
+    delete cleansedTask.owner_id;
+    delete cleansedTask.width;
+    delete cleansedTask.height;
+    if(cleansedTask.backendRequest) {
+        delete cleansedTask.backendRequest;
+    }
+    if(cleansedTask.first_pass_image) {
+        delete cleansedTask.first_pass_image;
+    }
+    return cleansedTask;
+}
+
 module.exports = {
     isValidDiffusionRequest,
     doesUserOwnCategory,
@@ -133,5 +156,6 @@ module.exports = {
     validateSamplerName,
     validateSchedulerName,
     validateUpscalerName,
-    getAlwaysOnScripts
+    getAlwaysOnScripts,
+    cleanseTask
 }

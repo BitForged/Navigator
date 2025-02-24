@@ -1,54 +1,19 @@
 const express = require('express');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
-const Semaphore = require('../Semaphore');
-const Server = require('socket.io').Server;
+const { addQueueItem, removeQueueItem, getQueueSize, doesQueueContainItem,
+    getCurrentlyProcessingItem } = require('../processing/queueWorker');
+const { emitToAll, emitToSocketsByIp} = require('../processing/socketManager')
 const database = require('../database');
 const db = database.getConnectionPool();
 const router = express.Router();
 const constants = require('../constants');
 const {isAuthenticated} = require("../security");
 const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName, validateSchedulerName,
-    validateUpscalerName, getAlwaysOnScripts
+    validateUpscalerName, cleanseTask
 } = require('../util');
 const Img2ImgRequest = require('../models/Img2ImgRequest');
 
-let lastUsedModel = "";
-const queue = [];
-const semaphore = new Semaphore(1); // Current stable diffusion backend only supports 1 concurrent request
-
-const rtPort = Number(process.env.RT_API_PORT) || 3334;
-
-let currentJob = null;
-
-const io = new Server(rtPort, {
-    cors: {
-        origin: "*",
-    }
-});
-
-console.log(`Navigator Realtime is running on port ${rtPort}!`);
-
-if(process.env.I_DO_NOT_LIKE_FUN !== null) {
-    io.on("connection", (socket) => {
-        console.log(`Charting a course for client ${socket.id} (${socket.handshake.address}). Steady as she goes!`);
-        socket.emit("connected", { message: `Welcome aboard! We're navigating uncharted territories together.` });
-        socket.on("disconnect", () => {
-            console.log(`Client ${socket.id} has set sail for distant shores. Until we meet again!`);
-        });
-    });
-}
-
-axios.get(`${constants.SD_API_HOST}/options`).then(response => {
-    const options = response.data;
-    if(options.sd_model_checkpoint) {
-        lastUsedModel = options.sd_model_checkpoint;
-        console.log("Updated last used SD model reference.");
-    }
-}).catch(error => {
-    console.error(error);
-    console.error("Failed to get last used SD model checkpoint from SD API. Continuing without it.");
-})
 
 /*
     The goal of this route is to grab a list of models from the SD API, and also compare it to a list of models that we
@@ -58,7 +23,7 @@ axios.get(`${constants.SD_API_HOST}/options`).then(response => {
 router.get('/models', async (req, res) => {
     if(req.query.refresh === 'true') {
         await axios.post(`${constants.SD_API_HOST}/refresh-checkpoints`)
-        io.sockets.emit('models-refreshed', { message: 'Models have been refreshed!' });
+        emitToAll('models-refreshed', { message: 'Models have been refreshed!' });
     }
     axios.get(`${constants.SD_API_HOST}/sd-models`)
         .then(response => {
@@ -218,7 +183,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         scheduler_name: validatedSchedulerName,
         denoising_strength: denoising_strength || 0.0,
         force_hr_fix: force_hr_fix || false,
-        queue_size: queue.length + 1,
+        queue_size: getQueueSize() + 1,
         task_type: 'txt2img',
         status: 'queued',
         origin: requestIP,
@@ -238,6 +203,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     let samplerData = await axios.get(`${constants.SD_API_HOST}/samplers`);
     for(let i = 0; i < samplerData.data.length; i++) {
         let sampler = samplerData.data[i];
+        // noinspection JSUnresolvedReference
         let containsAlias = sampler.aliases.indexOf(job.sampler_name) > -1;
         if (containsAlias) {
             job.sampler_name = sampler.name;
@@ -259,7 +225,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         return;
     }
 
-    queue.push(job);
+    addQueueItem(job);
     if(job.first_pass_image) {
         let cleanedTask = {...job};
         delete cleanedTask.first_pass_image;
@@ -350,7 +316,7 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
         type: 'img2img',
         job_id,
         owner_id,
-        queue_size: queue.length + 1,
+        queue_size: getQueueSize() + 1,
         task_type: 'img2img',
         status: 'queued',
         origin: requestIP,
@@ -369,7 +335,7 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
         return;
     }
 
-    queue.push(job);
+    addQueueItem(job);
 
     if(init_image) {
         let cleanedTask = {...job};
@@ -474,6 +440,7 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
         res.status(400).json({ error: 'Missing authentication data' });
         return;
     }
+    // noinspection JSUnresolvedReference
     const jobId = req.params.jobId;
     let newCategoryId = null;
 
@@ -540,6 +507,7 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
 });
 
 router.get('/images/:jobId', async (req, res) => {
+    // noinspection JSUnresolvedReference
     const jobId = req.params.jobId.replace(".png", "");
     db.query('SELECT image_data FROM images WHERE id = ?', [jobId], (error, results) => {
         if (error) {
@@ -610,7 +578,11 @@ router.get('/previews/:jobId', async (req, res) => {
 
 router.post('/queue/interrupt/:jobId', isAuthenticated, async (req, res) => {
     const jobId = req.params.jobId;
-    if(currentJob !== null && currentJob.job_id === jobId) {
+    // Check to see if the currently processing item is the requested Job ID
+    if(getCurrentlyProcessingItem() !== null && getCurrentlyProcessingItem().job_id === jobId) {
+        const currentJob = getCurrentlyProcessingItem();
+        // If it is, make sure it's owned by the user requesting the interrupt
+        // noinspection JSUnresolvedReference
         if(currentJob.owner_id !== req.user.discord_id) {
             res.status(403).json({ error: 'Unauthorized' });
             return;
@@ -627,35 +599,6 @@ router.post('/queue/interrupt/:jobId', isAuthenticated, async (req, res) => {
     }
 });
 
-async function worker() {
-    console.log("Navigator Queue Worker started!");
-    //noinspection InfiniteLoopJS
-    while(true) {
-        await semaphore.acquire();
-
-        if(queue.length > 0) {
-            const task = queue.shift();
-            task.status = 'started';
-            delete task.queue_size;
-            currentJob = task;
-            try {
-                emitToSocketsByIp(task.origin, 'task-started', cleanseTask(task));
-                if(task.type === 'txt2img') {
-                    await processTxt2ImgTask(task);
-                } else if(task.type === 'img2img') {
-                    await processImg2ImgTask(task);
-                }
-            } catch(error) {
-                console.error('Error processing task: ', error);
-            } finally {
-                semaphore.release();
-            }
-        } else {
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            semaphore.release();
-        }
-    }
-}
 
 function createImageJobInDB(job) {
     return new Promise((resolve, reject) => {
@@ -669,368 +612,4 @@ function createImageJobInDB(job) {
     });
 }
 
-async function writeImageToDB(jobId, image) {
-    return new Promise((resolve, reject) => {
-        if(image === null || image === undefined) {
-            console.error('Image is null or undefined!');
-            reject('Image is null or undefined!');
-        }
-
-        if(jobId === null || jobId === undefined) {
-            console.error('JobId is null or undefined!');
-            reject('JobId is null or undefined!');
-            return;
-        }
-        db.execute('UPDATE images SET image_data = ? WHERE id = ?', [image, jobId], function(error) {
-            if (error) {
-                reject(error);
-            } else {
-                resolve();
-            }
-        });
-    });
-}
-
-async function savePreviewToDb(jobId, preview) {
-    return new Promise((resolve, reject) => {
-        if(preview === null || preview === undefined) {
-            reject('Preview is null or undefined!');
-            return;
-        }
-        db.execute('UPDATE images SET preview_data = ? WHERE id = ?', [preview, jobId], function(error) {
-            if (error) {
-                reject(error);
-                console.error('Preview failed saved to DB!');
-            } else {
-                resolve();
-            }
-        });
-    });
-}
-
-async function verifyWorkingOnTask(task) {
-    const reqData = {
-        id_task: "navigator-" + task.job_id,
-        live_preview: false,
-        id_live_preview: -1
-    };
-    try {
-        const response = await axios.post(`${constants.SD_API_BASE}/internal/progress`, reqData);
-        if (response.data === null || response.data === undefined) {
-            return false;
-        }
-        return response.data.active === true;
-    } catch (error) {
-        console.error('Error verifying task: ', error);
-        return false;
-    }
-}
-
-async function checkForProgressAndEmit(task) {
-    await new Promise((resolve) => {
-        axios.get(`${constants.SD_API_HOST}/progress`)
-            .then(async response => {
-                await savePreviewToDb(task.job_id, response.data.current_image);
-                emitToSocketsByIp(task.origin, 'task-progress', {
-                    ...cleanseTask(task),
-                    progress: response.data.progress,
-                    eta_relative: response.data.eta_relative,
-                    current_step: response.data.state.sampling_step,
-                    total_steps: response.data.state.sampling_steps,
-                    progress_path: "/api/previews/" + task.job_id
-                });
-                resolve();
-            })
-            .catch(error => {
-                if(error === "Preview is null or undefined!") {
-                    // We don't want to spam the console with this error.
-                    // As this error is expected when the preview is not available (due to the backend "warming up").
-                    resolve();
-                } else {
-                    console.error('Error checking for progress: ', error);
-                    resolve();
-                }
-            });
-    });
-}
-
-async function processTxt2ImgTask(task) {
-    console.log('Processing txt2img task');
-    task.status = 'processing';
-    console.log(task.upscaler_name);
-    // Fix upscaler name if it's not provided
-    if(task.upscaler_name === undefined || task.upscaler_name === null) {
-        task.upscaler_name = await validateUpscalerName(task.model_name); // Passed in value doesn't matter here, it'll pick one
-        console.log('Upscaler name not provided, using default: ' + task.upscaler_name);
-    }
-    let hasQueued = false;
-    await new Promise((resolve) => {
-        const interval = setInterval(async () => {
-            if (!hasQueued) return;
-            const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
-            if(!isTaskActiveOnBackend) {
-                console.log('Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.');
-                return;
-            }
-            await checkForProgressAndEmit(task);
-        }, 2500);
-        console.log('Sending task to SD API...');
-        let hasModelChanged = lastUsedModel !== task.model_name;
-        if(hasModelChanged) {
-            emitToSocketsByIp(task.origin, 'model-changed', { model_name: task.model_name, job_id: task.job_id });
-        }
-        lastUsedModel = task.model_name;
-
-        let queuedTask = {
-            prompt: task.prompt,
-            negative_prompt: task.negative_prompt,
-            seed: task.seed,
-            steps: task.steps,
-            width: task.width,
-            height: task.height,
-            cfg_scale: task.cfg_scale,
-            sampler_name: task.sampler_name,
-            scheduler: task.scheduler_name,
-            enable_hr: false,
-            hr_upscaler: task.upscaler_name,
-            hr_additional_modules: [], // Needed for SD Forge WebUI
-            save_images: false,
-            override_settings: {
-                sd_model_checkpoint: task.model_name
-            },
-            override_settings_restore_afterwards: false,
-            force_task_id: "navigator-" + task.job_id
-        }
-        if(task.image_enhancements) {
-            queuedTask["alwayson_scripts"] = getAlwaysOnScripts(true, true)
-        }
-
-        if(task.denoising_strength && task.denoising_strength !== 0.0) {
-            queuedTask.denoising_strength = task.denoising_strength
-        }
-
-        if(task.force_hr_fix === true) {
-            queuedTask.enable_hr = true
-        }
-
-        if(task.subseed && task.subseed_strength) {
-            queuedTask.subseed = task.subseed;
-            queuedTask.subseed_strength = task.subseed_strength;
-        }
-
-        if(task.first_pass_image !== undefined && task.first_pass_image !== null) {
-            queuedTask.firstpass_image = task.first_pass_image;
-        }
-
-        if(task.force_hr_fix === true) {
-            console.log("Requested HR Fix+Upscale for task confirmed");
-            queuedTask.hr_resize_x = task.width * 2;
-            queuedTask.hr_resize_y = task.height * 2;
-            queuedTask.enable_hr = true;
-            queuedTask.hr_second_pass_steps = clamp(task.hrf_steps, task.hrf_steps, task.steps);
-
-            if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
-                queuedTask.denoising_strength = 0.35;
-        }
-
-        // If the image is past a certain size, we need to enable HR Fix.
-        // This will generate a smaller image, then
-        // upscale it to the desired size.
-        // If the task is already flagged for HR Fix, we don't need to do this.
-        if(!task.force_hr_fix && task.width * task.height > 1024 * 1024) {
-            queuedTask.enable_hr = true;
-            // Denoising strength controls how much of the original image can the model "see":
-            // Setting it too high will cause most of the original image
-            // to be lost and a new image to be generated.
-            // But setting it too low will cause other issues, such as blurry images.
-            // Here we choose 0.35 as a good middle ground if the user hasn't provided their own.
-            if(queuedTask.denoising_strength === undefined || queuedTask.denoising_strength === null || queuedTask.denoising_strength === 0.0)
-                queuedTask.denoising_strength = 0.35;
-            queuedTask.hr_resize_x = task.width;
-            queuedTask.hr_resize_y = task.height;
-
-            // This is the number of steps that the model will use during the HR Fix process.
-            // In my experience, you generally don't need an extremely high number of steps.
-            // We clamp it to a maximum of 30, to prevent excessive wait times.
-            // However, this might be increased in the future.
-            queuedTask.hr_second_pass_steps = clamp(queuedTask.steps, queuedTask.steps, 30);
-
-            // Ensure that we tell the backend to generate the initial image at half the size.
-            // The above will upscale it to the desired size.
-            // This is done because generating an image past a certain size will cause the backend to run out of VRAM,
-            // however, by using HR Fix, we can generate a smaller image and upscale it without running out of VRAM.
-            queuedTask.width /= 2;
-            queuedTask.height /= 2;
-            // Round up the new width/height because SD backend does not accept decimal/floating point values for these
-            queuedTask.width = Math.ceil(queuedTask.width);
-            queuedTask.height = Math.ceil(queuedTask.height);
-        }
-        if(queuedTask.denoising_strength === undefined && queuedTask.enable_hr === true) {
-            queuedTask.denoising_strength = 0.35;
-        }
-        axios.post(`${constants.SD_API_HOST}/txt2img`, queuedTask).then(async response => {
-            clearInterval(interval);
-            console.log("Task finished!");
-            if (response.data.images.length > 0) {
-                let jobInfo = response.data.info;
-                jobInfo = JSON.parse(jobInfo);
-                if(jobInfo !== undefined && jobInfo !== null && jobInfo.seed !== undefined && jobInfo.seed !== null) {
-                    task.seed = jobInfo.seed;
-                }
-                try {
-                    await writeImageToDB(task.job_id, response.data.images[0]);
-                    task.status = 'finished';
-                    emitToSocketsByIp(task.origin, 'task-finished', {...cleanseTask(task), img_path: "/api/images/" + task.job_id});
-                } catch (error) {
-                    console.error('Error writing image to DB: ', error);
-                    task.status = 'failed';
-                    emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error});
-                }
-            } else {
-                console.log("No images were generated.");
-                task.status = 'failed';
-                emitToSocketsByIp(task.origin, 'task-failed', { ...cleanseTask(task), error: 'No images were generated.' });
-            }
-            resolve();
-        }).catch(error => {
-            console.error('Error: ', error);
-            clearInterval(interval);
-            console.log("Task failed!");
-            emitToSocketsByIp(task.origin, 'task-failed', { ...cleanseTask(task), error: error.message });
-            resolve();
-        });
-        hasQueued = true;
-
-    });
-}
-
-async function processImg2ImgTask(task) {
-    console.log('Processing img2img task');
-    task.status = 'processing';
-    let hasQueued = false;
-    await new Promise((resolve) => {
-        const interval = setInterval(async () => {
-            if (!hasQueued) return;
-            const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
-            if (!isTaskActiveOnBackend) {
-                console.log('Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.');
-                return;
-            }
-            await checkForProgressAndEmit(task);
-        }, 2500);
-        console.log('Sending task to SD API...');
-        let hasModelChanged = lastUsedModel !== task.backendRequest.model_name;
-        if (hasModelChanged) {
-            emitToSocketsByIp(task.origin, 'model-changed', {
-                model_name: task.backendRequest.model_name,
-                job_id: task.job_id
-            });
-        }
-        lastUsedModel = task.backendRequest.model_name;
-        task.backendRequest.sendToApi().then(async response => {
-            clearInterval(interval);
-            console.log("Task finished!");
-            if (response.data.images.length > 0) {
-                let jobInfo = response.data.info;
-                jobInfo = JSON.parse(jobInfo);
-                if (jobInfo !== undefined && jobInfo !== null && jobInfo.seed !== undefined && jobInfo.seed !== null) {
-                    task.backendRequest.seed = jobInfo.seed;
-                }
-                try {
-                    await writeImageToDB(task.job_id, response.data.images[0]);
-                    task.status = 'finished';
-                    emitToSocketsByIp(task.origin, 'task-finished', {
-                        ...cleanseTask(task),
-                        img_path: "/api/images/" + task.job_id
-                    });
-                } catch (error) {
-                    console.error('Error writing image to DB: ', error);
-                    task.status = 'failed';
-                    emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error});
-                }
-            } else {
-                console.log("No images were generated.");
-                task.status = 'failed';
-                emitToSocketsByIp(task.origin, 'task-failed', {
-                    ...cleanseTask(task),
-                    error: 'No images were generated.'
-                });
-            }
-            resolve();
-        }).catch(error => {
-            console.error('Error: ', error);
-            clearInterval(interval);
-            console.log("Task failed!");
-            emitToSocketsByIp(task.origin, 'task-failed', {...cleanseTask(task), error: error.message});
-            resolve();
-        });
-
-        hasQueued = true;
-    });
-}
-
-function getSocketsByIp(ip) {
-    let matchedSockets = [];
-    io.sockets.sockets.forEach(s => {
-        // Check if the IP matches the socket's IP
-        if(s.handshake.address === ip) {
-            matchedSockets.push(s);
-            return;
-        }
-        // Check if the X-Forwarded-For or CF-Connecting-IP header matches the socket's IP (for reverse proxies)
-        if(s.handshake.headers['x-forwarded-for'] === ip) {
-            matchedSockets.push(s);
-            return;
-        }
-        if(s.handshake.headers['cf-connecting-ip'] === ip) {
-            matchedSockets.push(s);
-        }
-    });
-    if(matchedSockets.length === 0) {
-        console.error('Socket not found for IP: ', ip);
-    }
-    return matchedSockets;
-}
-
-function emitToSocketsByIp(ip, event, data) {
-    getSocketsByIp(ip).forEach(s => {
-        s.emit(event, data);
-    });
-}
-
-/*
-    Not all data associated with a task needs to be constantly sent back and forth, strip out the unnecessary data.
- */
-function cleanseTask(task) {
-    let cleansedTask = {...task};
-    delete cleansedTask.prompt;
-    delete cleansedTask.negative_prompt;
-    delete cleansedTask.owner_id;
-    delete cleansedTask.width;
-    delete cleansedTask.height;
-    if(cleansedTask.backendRequest) {
-        delete cleansedTask.backendRequest;
-    }
-    if(cleansedTask.first_pass_image) {
-        delete cleansedTask.first_pass_image;
-    }
-    return cleansedTask;
-}
-
-/**
- * Returns a number whose value is limited to the given range.
- *
- * Example: limit the output of this computation to between 0 and 255
- * (x * 255).clamp(0, 255)
- *
- * @param {Number} value The base value to compare against
- * @param {Number} min The lower boundary of the output range
- * @param {Number} max The upper boundary of the output range
- * @returns A number in the range [min, max]
- * @type Number
- */
-function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-}
-
-module.exports = {router, worker};
+module.exports = {router};
