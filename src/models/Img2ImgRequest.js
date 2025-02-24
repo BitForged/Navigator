@@ -2,14 +2,15 @@ const DiffusionRequest = require('./DiffusionRequest');
 const database = require('../database');
 const constants = require('../constants');
 const axios = require('axios');
+const {getAlwaysOnScripts} = require("../util");
 
 module.exports = class Img2ImgRequest extends DiffusionRequest {
     constructor(id, model_name, prompt, negative_prompt, seed, sampler_name, scheduler_name, steps, cfg_scale,
-                width, height, initial_image, mask) {
+                width, height, initial_image, mask, image_enhancements) {
         super(id, model_name, prompt, negative_prompt, seed, sampler_name, steps, cfg_scale, width, height);
         this.initial_image = initial_image;
         this.mask = mask;
-        console.log(`Creating Img2ImgRequest with ID ${id}`);
+        this.image_enhancements = image_enhancements;
     }
 
     async prepareInitialImage() {
@@ -74,6 +75,10 @@ module.exports = class Img2ImgRequest extends DiffusionRequest {
         // Validate some parameters that are required for the API
         if(apiData.steps > 75) {
             apiData.steps = 75;
+        }
+
+        if(this.image_enhancements) {
+            apiData["alwayson_scripts"] = getAlwaysOnScripts(true, true)
         }
 
         if(!apiData.mask || apiData.mask === '') {

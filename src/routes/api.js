@@ -9,7 +9,7 @@ const router = express.Router();
 const constants = require('../constants');
 const {isAuthenticated} = require("../security");
 const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validateSamplerName, validateSchedulerName,
-    validateUpscalerName
+    validateUpscalerName, getAlwaysOnScripts
 } = require('../util');
 const Img2ImgRequest = require('../models/Img2ImgRequest');
 
@@ -151,17 +151,18 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
        - denoising_strength (optional, default to 0.35 when hr_fix is enabled)
        - force_hr_fix (optional, default to false)
        - upscaler_name (optional, will check if "4x_NMKD-Siax_200k" exists - if not, fall back to a built-in ("RealESRGAN_x4"))
+       - image_enhancements (optional, set to any value to activate, will enable FreeU and SAG via Forge if activated)
      */
 
     if(taskData === undefined) {
         const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name } = req.body;
+            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name, image_enhancements } = req.body;
         taskData = { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name };
+            scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name, image_enhancements };
     }
 
     const { model_name, prompt, negative_prompt, job_id, width, height, steps, hrf_steps, seed, cfg_scale, sampler_name,
-        scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name } = taskData;
+        scheduler_name, denoising_strength, force_hr_fix, subseed, subseed_strength, categoryId, upscaler_name, image_enhancements } = taskData;
     if (!model_name || !prompt || !owner_id) {
         res.status(400).json({ error: 'Missing required parameters' });
         return;
@@ -221,7 +222,8 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         task_type: 'txt2img',
         status: 'queued',
         origin: requestIP,
-        categoryId
+        categoryId,
+        image_enhancements: image_enhancements !== undefined || false,
     };
 
     if(subseed && subseed_strength) {
@@ -271,13 +273,13 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
 async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
     if(taskData === undefined) {
         const { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name, scheduler_name,
-            denoising_strength, categoryId, init_image, mask } = req.body;
+            denoising_strength, categoryId, init_image, mask, image_enhancements } = req.body;
         taskData = { owner_id, model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name,
-            scheduler_name, denoising_strength, categoryId, init_image, mask };
+            scheduler_name, denoising_strength, categoryId, init_image, mask, image_enhancements };
     }
 
     let { model_name, prompt, negative_prompt, width, height, steps, seed, cfg_scale, sampler_name, scheduler_name,
-        denoising_strength, categoryId, init_image, mask } = taskData;
+        denoising_strength, categoryId, init_image, mask, image_enhancements } = taskData;
     if (!isValidDiffusionRequest(taskData)) {
         res.status(400).json({ error: 'Missing required parameters' });
         return;
@@ -328,7 +330,7 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
     let backendRequest = null;
     try {
         backendRequest = new Img2ImgRequest(job_id, model_name, prompt, negative_prompt, seed, sampler_name, scheduler_name, steps,
-            cfg_scale, width, height, init_image, mask);
+            cfg_scale, width, height, init_image, mask, image_enhancements || false);
         if(denoising_strength) {
             backendRequest.denoising_strength = denoising_strength;
             console.log(`Setting denoising strength to ${denoising_strength}`);
@@ -352,7 +354,8 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
         task_type: 'img2img',
         status: 'queued',
         origin: requestIP,
-        backendRequest
+        backendRequest,
+        image_enhancements: image_enhancements !== undefined || false,
     };
 
     if(categoryId) {
@@ -455,6 +458,7 @@ function getImageParams(jobId) {
                         if(subseed_strength !== undefined && subseed_strength !== null) {
                             imageData.subseed_strength = subseed_strength;
                         }
+                        imageData.image_enhancements = response.data.parameters["freeu_enabled"] === "True" || response.data.parameters["sag_enabled"] === "True";
                         resolve(imageData);
                     });
                 } else {
@@ -510,6 +514,7 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             first_pass_image: params.image_data,
             force_hr_fix: true,
             categoryId: newCategoryId,
+            image_enhancements: params.image_enhancements || false,
         }
 
         if(req.body.upscaler_name !== undefined && req.body.upscaler_name !== null) {
@@ -795,6 +800,9 @@ async function processTxt2ImgTask(task) {
             },
             override_settings_restore_afterwards: false,
             force_task_id: "navigator-" + task.job_id
+        }
+        if(task.image_enhancements) {
+            queuedTask["alwayson_scripts"] = getAlwaysOnScripts(true, true)
         }
 
         if(task.denoising_strength && task.denoising_strength !== 0.0) {

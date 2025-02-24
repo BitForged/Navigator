@@ -88,11 +88,50 @@ async function validateUpscalerName(upscalerName) {
     return "RealESRGAN_x4";
 }
 
+/**
+ * Always-on scripts are used to trigger installed/built-in extensions from Forge via the API. This function will
+ * take in various supported parameters, and will output an object that contains the extension data that Forge expects.
+ * @param hasFreeU Whether to enable "FreeU" integration
+ * @param hasSAG Whether to enable SelfAttentionGuidance integration
+ * @return The formatted "Always On Scripts" object that the Forge API requires
+ */
+function getAlwaysOnScripts(hasFreeU, hasSAG) {
+    let alwaysOnScripts = {};
+    if(hasFreeU === true) {
+        alwaysOnScripts["FreeU Integrated (SD 1.x, SD 2.x, SDXL)"] = {
+            "args": [
+                // This is a recommended set of parameters for SDXL, but generally SDXL models tend to be used these days
+                // The following comments will identify the arguments to the WebUI settings
+                true, // Enabled
+                1.1,  // B1
+                1.2,  // B2
+                0.6,  // S1
+                0.4,  // S2
+                0,    // Start Step
+                1     // End Step
+            ]
+        }
+    }
+
+    if(hasSAG === true) {
+        alwaysOnScripts["SelfAttentionGuidance Integrated (SD 1.x, SD 2.x, SDXL)"] = {
+            "args": [
+                true, // Enabled
+                0.5,  // Scale
+                2,    // Blur Sigma
+                1     // Blur mask threshold
+            ]
+        }
+    }
+    return alwaysOnScripts;
+}
+
 module.exports = {
     isValidDiffusionRequest,
     doesUserOwnCategory,
     validateModelName,
     validateSamplerName,
     validateSchedulerName,
-    validateUpscalerName
+    validateUpscalerName,
+    getAlwaysOnScripts
 }
