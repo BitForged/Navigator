@@ -8,17 +8,39 @@ let samplerCache = [];
 let schedulerCache = [];
 let upscalerCache = [];
 
+/**
+ * Validates a diffusion request based on the presence of basic required fields.
+ *
+ * @param {Object} task_data - The data object representing the diffusion request to validate.
+ * @param {string} task_data.owner_id - The ID of the owner making the request.
+ * @param {string} task_data.model_name - The name of the model to be used for image generation.
+ * @param {string} task_data.prompt - The prompt or input associated with the image generation request.
+ * @return {boolean} Returns true if the diffusion request is valid (contains all required fields); otherwise, false.
+ */
 function isValidDiffusionRequest(task_data) {
     return !(!task_data.owner_id || !task_data.model_name || !task_data.prompt);
 }
 
+/**
+ * Determines if a user owns a specific category by verifying the owner ID attached to the category.
+ * Fetches the category information from the database and compares its owner ID to the provided user ID.
+ *
+ * @param {number|string} userId - The ID of the user to check.
+ * @param {number|string} categoryId - The ID of the category to verify ownership of.
+ * @return {Promise<boolean>} A promise that resolves to true if the user owns the category, otherwise false.
+ */
 async function doesUserOwnCategory(userId, categoryId) {
     let category = await database.getCategoryById(categoryId);
     return category.owner_id === userId;
 }
 
-// This function will check to see if the provided model name exists either on the backend API or in our database
-// If it does not exist, it will return the first model name from the API
+/**
+ * Validates a given model name by checking it against a list of available models from the Forge API
+ * and our local model database. If the model name is not found, returns a default model name (the first found model).
+ *
+ * @param {string} modelName - The name of the model to validate.
+ * @return {Promise<string>} The validated model name, or a default model name if the input is not found.
+ */
 async function validateModelName(modelName) {
     let response = await axios.get(`${constants.SD_API_HOST}/sd-models`);
     let api_models = response.data;
@@ -40,9 +62,15 @@ async function validateModelName(modelName) {
     return api_models[0].model_name;
 }
 
-// This function will check if the provided sampler name exists on the API (we don't have our own custom samplers).
-// Specifically, it will also attempt to see if the provided sampler name matches a sampler alias, and if so, it will
-// return the actual sampler name. If the provided sampler name does not exist, it will return the first sampler.
+/**
+ * Validates and resolves a sampler name based on the provided input. The method checks against
+ * cached sampler data if available; otherwise, it fetches and caches the sampler data from the Forge API.
+ * If the provided name matches a sampler or its aliases, the matched sampler's name is returned.
+ * If no match is found, the first sampler name from the API is returned as a fallback.
+ *
+ * @param {string} samplerName - The name or alias of the sampler to validate.
+ * @return {Promise<string>} A promise resolving to a valid sampler name.
+ */
 async function validateSamplerName(samplerName) {
     if(samplerCache.length > 0) {
         for(let sampler of samplerCache) {
@@ -73,6 +101,13 @@ async function validateSamplerName(samplerName) {
     return samplerCache[0].name;
 }
 
+/**
+ * Validates the given scheduler name by checking whether it exists in the local scheduler cache or fetching data from the Forge API if the cache is empty.
+ * If no match is found, falls back to the default scheduler name "automatic".
+ *
+ * @param {string} schedulerName - The name of the scheduler to validate.
+ * @return {Promise<string|object>} The matched scheduler object if found, the scheduler name if matched from the external data, or the default "automatic" if no match is found.
+ */
 async function validateSchedulerName(schedulerName) {
     if(schedulerCache.length > 0) {
         for(let scheduler of schedulerCache) {
@@ -98,6 +133,14 @@ async function validateSchedulerName(schedulerName) {
     return "automatic";
 }
 
+/**
+ * Validates the given upscaler name by comparing it against cached upscalers
+ * or fetching available upscalers from the Forge API. If the provided upscaler
+ * name is not valid, it falls back to predefined default values.
+ *
+ * @param {string} upscalerName - The name of the upscaler to validate.
+ * @return {Promise<string>} A promise that resolves to a valid upscaler name.
+ */
 async function validateUpscalerName(upscalerName) {
     if(upscalerName.length > 0) {
         for(let upscaler of upscalerCache) {
