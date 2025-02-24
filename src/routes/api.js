@@ -230,7 +230,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
         let cleanedTask = {...job};
         delete cleanedTask.first_pass_image;
         // We don't want to send the first pass image to the client, as it's a large base64 string.
-        res.json(job);
+        res.json(cleanedTask);
     } else {
         res.json(job);
     }
