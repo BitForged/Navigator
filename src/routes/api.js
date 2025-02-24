@@ -589,13 +589,20 @@ router.post('/queue/interrupt/:jobId', isAuthenticated, async (req, res) => {
         }
         axios.post(`${constants.SD_API_HOST}/interrupt`).then(() => {
             emitToSocketsByIp(currentJob.origin, 'task-interrupted', cleanseTask(currentJob));
-            res.json({ message: 'Task interrupted' });
+            res.json({ message: 'Task interrupted!', status: 'interrupted' });
         }).catch(error => {
             console.error('Error interrupting task: ', error);
             res.status(500).json({ error: error.message });
         })
     } else {
-        res.status(404).json({ error: 'Task not found' });
+        if(doesQueueContainItem(jobId)) {
+            removeQueueItem(jobId);
+            res.json({ message: 'Task removed!', status: 'removed' });
+            // Since the Job ID was allocated and saved into the database, it should be removed since it'll never be used.
+            await database.asyncQuery('DELETE FROM images WHERE id = ?', [jobId]);
+        } else {
+            res.status(404).json({ error: 'Task not found' });
+        }
     }
 });
 
