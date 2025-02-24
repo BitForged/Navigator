@@ -1,4 +1,5 @@
 const express = require('express');
+const childProcess = require('child_process');
 const apiRouter = require('./routes/api');
 const authRouter = require('./routes/auth');
 const embedRouter = require('./routes/embed');
@@ -10,6 +11,31 @@ const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
 
 const SD_API_HOST = process.env.SD_API_HOST || "http://192.168.2.165:7860/sdapi/v1";
+
+// Grab current version information (commit SHA / branch) if found
+let versionInfo = {};
+if(process.env.BRANCH !== undefined) {
+    versionInfo.branch = process.env.BRANCH;
+} else {
+    // Try to execute git to get the current branch
+    try {
+        versionInfo.branch = childProcess.execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+    } catch(err) {
+        versionInfo.branch = 'unknown';
+    }
+}
+if(process.env.COMMIT_SHA !== undefined) {
+    versionInfo.commit = process.env.COMMIT_SHA;
+} else {
+    // Try to execute git to get the current commit SHA
+    try {
+        versionInfo.commit = childProcess.execSync('git rev-parse HEAD').toString().trim().slice(0, 7);
+    } catch(err) {
+        versionInfo.commit = 'unknown';
+    }
+}
+
+console.log(`Starting Navigator - Revision: ${versionInfo.commit} (${versionInfo.branch})`);
 
 (async () => {
     await migrations.runMigrations();

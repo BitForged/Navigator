@@ -5,7 +5,6 @@ const db = null;
 module.exports = {
     getConnectionPool: () => {
         if (!db) {
-            console.log('Creating new database connection pool');
             this.db = mysql.createPool({
                 host: process.env.DB_HOST || 'localhost',
                 user: process.env.DB_USER || 'bitjourney',
