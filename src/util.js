@@ -142,7 +142,7 @@ async function validateSchedulerName(schedulerName) {
  * @return {Promise<string>} A promise that resolves to a valid upscaler name.
  */
 async function validateUpscalerName(upscalerName) {
-    if(upscalerName.length > 0) {
+    if(upscalerCache.length > 0) {
         for(let upscaler of upscalerCache) {
             if(upscaler.name === upscalerName) {
                 return upscaler.name;
