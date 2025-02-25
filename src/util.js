@@ -112,7 +112,7 @@ async function validateSchedulerName(schedulerName) {
     if(schedulerCache.length > 0) {
         for(let scheduler of schedulerCache) {
             if(scheduler.name === schedulerName) {
-                return scheduler;
+                return scheduler.name;
             }
         }
     } else {
