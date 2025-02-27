@@ -396,37 +396,50 @@ function parseModelNameFromInfo(info) {
 
 function getImageParams(jobId) {
     return new Promise((resolve, reject) => {
-        db.query('SELECT * FROM images WHERE id = ?', [jobId], (error, results) => {
+        db.query('SELECT * FROM images WHERE id = ?', [jobId], async (error, results) => {
             if (error) {
                 reject(error);
             } else {
                 if (results.length > 0) {
-                    axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
-                        let imageData = {
-                            width: response.data.parameters["Size-1"],
-                            height: response.data.parameters["Size-2"],
-                            seed: response.data.parameters["Seed"],
-                            cfg_scale: response.data.parameters["CFG scale"],
-                            steps: response.data.parameters["Steps"],
-                            model_name: parseModelNameFromInfo(response.data.info),
-                            prompt: response.data.parameters["Prompt"],
-                            negative_prompt: response.data.parameters["Negative prompt"],
-                            sampler_name: response.data.parameters["Sampler"],
-                            scheduler_name: response.data.parameters["Schedule type"],
-                            denoising_strength: response.data.parameters["Denoising strength"],
-                            image_data: results[0].image_data.toString()
+                    let info = {}
+                    if(results[0].info_data64 !== undefined && results[0].info_data64 !== null) {
+                        // Already cached, just utilize that instead
+                        console.log('Using cached image info');
+                        // Base64 decode the data
+                        let buffer = Buffer.from(results[0].info_data64, 'base64');
+                        info = JSON.parse(buffer.toString('utf8'));
+                    } else {
+                        try {
+                            let res = await axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() });
+                            info = res.data;
+                        } catch(e) {
+                            reject(e);
                         }
-                        const subseed = response.data.parameters["Variation seed"];
-                        const subseed_strength = response.data.parameters["Variation strength"];
-                        if(subseed !== undefined && subseed !== null) {
-                            imageData.subseed = subseed;
-                        }
-                        if(subseed_strength !== undefined && subseed_strength !== null) {
-                            imageData.subseed_strength = subseed_strength;
-                        }
-                        imageData.image_enhancements = response.data.parameters["freeu_enabled"] === "True" || response.data.parameters["sag_enabled"] === "True";
-                        resolve(imageData);
-                    });
+                    }
+                    let imageData = {
+                        width: info.parameters["Size-1"],
+                        height: info.parameters["Size-2"],
+                        seed: info.parameters["Seed"],
+                        cfg_scale: info.parameters["CFG scale"],
+                        steps: info.parameters["Steps"],
+                        model_name: parseModelNameFromInfo(info.info),
+                        prompt: info.parameters["Prompt"],
+                        negative_prompt: info.parameters["Negative prompt"],
+                        sampler_name: info.parameters["Sampler"],
+                        scheduler_name: info.parameters["Schedule type"],
+                        denoising_strength: info.parameters["Denoising strength"],
+                        image_data: results[0].image_data.toString()
+                    }
+                    const subseed = info.parameters["Variation seed"];
+                    const subseed_strength = info.parameters["Variation strength"];
+                    if(subseed !== undefined && subseed !== null) {
+                        imageData.subseed = subseed;
+                    }
+                    if(subseed_strength !== undefined && subseed_strength !== null) {
+                        imageData.subseed_strength = subseed_strength;
+                    }
+                    imageData.image_enhancements = info.parameters["freeu_enabled"] === "True" || info.parameters["sag_enabled"] === "True";
+                    resolve(imageData);
                 } else {
                     reject('Job not found');
                 }
@@ -540,13 +553,29 @@ router.get('/images/:jobId/info', async (req, res) => {
                     res.status(404).json({ error: 'Image not found' });
                     return;
                 }
-                axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
-                    let paramData = response.data;
-                    paramData.parameters.owner_id = results[0].owner_id;
-                    res.json(response.data);
-                }).catch(error => {
-                    res.status(500).json({ error: error.message });
-                })
+                // Check if cached image info is present in DB
+                if(results[0].info_data64) {
+                    // Base64 decode the data and return it
+                    let buffer = Buffer.from(results[0].info_data64, 'base64');
+                    res.writeHead(200, {'Content-Type': 'application/json', 'Content-Length': buffer.length});
+                    res.end(buffer.toString());
+                } else {
+                    axios.post(`${constants.SD_API_HOST}/png-info`, { image: results[0].image_data.toString() }).then(response => {
+                        let paramData = response.data;
+                        paramData.parameters.owner_id = results[0].owner_id;
+                        res.json(response.data);
+                        // Since we didn't have the data in cache, go ahead and persist it to cache
+                        let buffer = Buffer.from(JSON.stringify(paramData), 'utf8');
+                        let data64 = buffer.toString('base64');
+                        db.query('UPDATE images SET info_data64 = ? WHERE id = ?', [data64, jobId], (error, _) => {
+                            if(error) {
+                                console.error('Failed to update image info cache: ' + error.message);
+                            }
+                        })
+                    }).catch(error => {
+                        res.status(500).json({ error: error.message });
+                    })
+                }
             } else {
                 res.status(404).json({ error: 'Image not found' });
             }

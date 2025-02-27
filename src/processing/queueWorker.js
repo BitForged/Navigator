@@ -403,6 +403,36 @@ async function writeImageToDB(jobId, image) {
                 resolve();
             }
         });
+
+        // Grab the Owner ID from the database
+        db.execute('SELECT owner_id FROM images WHERE id = ?', [jobId], function(error, results) {
+            if(error) {
+                console.error('Error getting owner ID from database: ', error);
+            } else {
+                if(results.length > 0) {
+                    const owner_id = results[0];
+                    // Retrieve image info data, and add it to the cache in the database
+                    axios.post(`${constants.SD_API_HOST}/png-info`, { image: image.toString() }).then(response => {
+                        if(response.data !== undefined && response.data !== null) {
+                            let info = response.data;
+                            info.parameters.owner_id = owner_id;
+                            // Base 64 encode the JSON data so we can save it back to the database
+                            info = Buffer.from(JSON.stringify(info)).toString('base64');
+                            db.execute('UPDATE images SET info_data64 = ? WHERE id = ?', [info, jobId], function(error) {
+                                if (error) {
+                                    console.error('Error saving image info to database: ', error);
+                                } else {
+                                    console.log('Image info saved to database!');
+                                }
+                            })
+                        }
+                    })
+                } else {
+                    console.error('No owner ID found for image!');
+                }
+            }
+        })
+
     });
 }
 
