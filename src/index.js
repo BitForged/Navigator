@@ -1,14 +1,16 @@
+require('module-alias/register')
+require('source-map-support').install();
 const express = require('express');
 const childProcess = require('child_process');
 const apiRouter = require('./routes/api');
 const authRouter = require('./routes/auth');
 const embedRouter = require('./routes/embed');
-const thirdpartyRouter = require('./thirdparty/router');
 const userRouter = require('./routes/user');
 const migrations = require('./migrations');
 const worker = require('./processing/queueWorker').worker;
 const socketManager = require('./processing/socketManager');
 
+import {thirdPartyRouter} from './thirdparty/router'
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
 
@@ -55,7 +57,7 @@ app.use(allowCors);
 app.use('/api', apiRouter.router);
 app.use('/api/auth', authRouter);
 app.use('/api/user', userRouter);
-app.use('/3papi', thirdpartyRouter);
+app.use('/3papi', thirdPartyRouter);
 app.use(embedRouter)
 
 app.listen(port, () => {
