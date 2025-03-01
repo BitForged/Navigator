@@ -14,6 +14,7 @@ After that, you need to fill the `.env` file with the correct values. The values
 ## Running
 
 ```bash
+npm run build
 npm run start
 ```
 
