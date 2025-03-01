@@ -10,6 +10,7 @@ const migrations = require('./migrations');
 const worker = require('./processing/queueWorker').worker;
 const socketManager = require('./processing/socketManager');
 
+import {modelRouter} from './routes/models';
 import {thirdPartyRouter} from './thirdparty/router'
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
@@ -58,6 +59,7 @@ app.use('/api', apiRouter.router);
 app.use('/api/auth', authRouter);
 app.use('/api/user', userRouter);
 app.use('/3papi', thirdPartyRouter);
+app.use('/api/models', modelRouter);
 app.use(embedRouter)
 
 app.listen(port, () => {
