@@ -15,6 +15,7 @@ interface LorasRequestQuery {
     forge_only: boolean
 }
 
+// @ts-ignore
 modelRouter.get('/loras', isAuthenticated, async (req: Request<RequestParams, ResponseBody, RequestBody, LorasRequestQuery>, res: Response) => {
     const loras: ForgeLora[] = await getLorasFromForge()
     const mergedLoras: NavigatorLora[] = []
