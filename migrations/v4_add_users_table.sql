@@ -1,0 +1,6 @@
+CREATE TABLE users (
+       id BIGINT PRIMARY KEY, -- Discord IDs are 64-bit integers, so use BIGINT here
+       role INT DEFAULT 1 NOT NULL,
+       created_at DATETIME DEFAULT CURRENT_TIMESTAMP NULL,
+       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

@@ -1,5 +1,7 @@
 const axios = require('axios');
 
+const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
+
 function exchangeCodeForToken(code) {
     return axios.post('https://discord.com/api/v10/oauth2/token', new URLSearchParams({
         client_id: process.env.DISCORD_CLIENT_ID,
@@ -19,7 +21,16 @@ function getUser(token) {
     })
 }
 
+function getUserById(userId) {
+    return axios.get('https://discord.com/api/v10/users/' + userId, {
+        headers: {
+            Authorization: `Bot ${BOT_TOKEN}`
+        }
+    })
+}
+
 module.exports = {
     exchangeCodeForToken,
-    getUser
+    getUser,
+    getUserById
 }
