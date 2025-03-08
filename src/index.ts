@@ -1,25 +1,32 @@
+import {NavigatorVersion} from "@/types/config";
+
 require('module-alias/register')
 require('source-map-support').install();
-const express = require('express');
-const childProcess = require('child_process');
-const apiRouter = require('./routes/api');
-const authRouter = require('./routes/auth');
-const embedRouter = require('./routes/embed');
-const userRouter = require('./routes/user');
-const migrations = require('./migrations');
+import express from 'express';
+import childProcess from 'child_process';
+import apiRouter from './routes/api';
+import authRouter from './routes/auth';
+import embedRouter from './routes/embed';
+import userRouter from './routes/user';
+import migrations from './migrations';
 const worker = require('./processing/queueWorker').worker;
-const socketManager = require('./processing/socketManager');
+import socketManager from './processing/socketManager';
 
 import {modelRouter} from './routes/models';
 import {adminRouter} from "@/routes/admin";
+import {configRouter} from "@/routes/config";
 import {thirdPartyRouter} from './thirdparty/router'
+
 const app = express();
 const port = process.env.HTTP_API_PORT || 3333;
 
-const SD_API_HOST = process.env.SD_API_HOST || "http://192.168.2.165:7860/sdapi/v1";
+const SD_API_HOST = process.env.SD_API_HOST;
 
 // Grab current version information (commit SHA / branch) if found
-let versionInfo = {};
+let versionInfo: NavigatorVersion = {
+    branch: 'unknown',
+    commit: 'unknown'
+};
 if(process.env.BRANCH !== undefined) {
     versionInfo.branch = process.env.BRANCH;
 } else {
@@ -62,6 +69,7 @@ app.use('/api/user', userRouter);
 app.use('/3papi', thirdPartyRouter);
 app.use('/api/models', modelRouter);
 app.use('/api/admin', adminRouter.getRouter());
+app.use('/api/config', configRouter)
 app.use(embedRouter)
 
 app.listen(port, () => {
@@ -80,5 +88,11 @@ function allowCors(req, res, next) {
 }
 
 module.exports = {
-    SD_API_HOST
+    SD_API_HOST,
+    versionInfo
+}
+
+export default {
+    SD_API_HOST,
+    versionInfo
 }

@@ -6,6 +6,7 @@ declare global {
             SECRET_KEY: string;
             SUPERUSER_ADMIN_TOKEN: undefined | string;
             BOT_TOKEN: undefined | string;
+            IMAGE_PIXEL_LIMIT: undefined | number;
         }
     }
 }

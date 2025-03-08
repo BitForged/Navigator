@@ -13,6 +13,7 @@ const { isValidDiffusionRequest, doesUserOwnCategory, validateModelName, validat
     validateUpscalerName, cleanseTask
 } = require('../util');
 const Img2ImgRequest = require('../models/Img2ImgRequest');
+const appConfig = require('@/types/config').getApplicationConfig()
 
 
 /*
@@ -149,8 +150,8 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     }
 
     // Ensure that the width and height are within acceptable bounds.
-    if ((width * height) > (2560 * 1440)) {
-        res.status(400).json({ error: 'The total value of (Width * height) must not exceed ~2K (2560x1440)' });
+    if ((width * height) > appConfig.pixelLimit) {
+        res.status(400).json({ error: `The total value of (Width * Height) must not exceed ${appConfig.pixelLimit}` });
         return;
     }
 
@@ -277,8 +278,8 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
     }
 
     // Ensure that the width and height are within acceptable bounds.
-    if ((width * height) > (2560 * 1440)) {
-        res.status(400).json({ error: 'The total value of (Width * height) must not exceed ~2K (2560x1440)' });
+    if ((width * height) > appConfig.pixelLimit) {
+        res.status(400).json({ error: `The total value of (Width * Height) must not exceed ${appConfig.pixelLimit}` });
         return;
     }
 
@@ -509,7 +510,7 @@ router.post('/queue/user/txt2img/upscale-hrf/:jobId', isAuthenticated, async (re
             taskData.hrf_steps = req.body.hrf_steps;
         }
 
-        if(((params.width * 2) * (params.height * 2)) > 2560 * 1440) {
+        if(((params.width * 2) * (params.height * 2)) > appConfig.pixelLimit) {
             res.status(400).json({error: 'Image is too large to upscale'});
             return;
         }
