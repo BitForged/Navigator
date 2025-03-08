@@ -7,7 +7,7 @@ const db = database.getConnectionPool();
 const {validateUpscalerName, getAlwaysOnScripts, cleanseTask} = require("../util");
 
 const queue = [];
-const semaphore = new Semaphore(1); // Current stable diffusion backend only supports 1 concurrent request
+const semaphore = new Semaphore(1); // The current stable diffusion backend only supports 1 concurrent request
 
 let lastUsedModel = "";
 let currentJob = null;
@@ -26,7 +26,7 @@ axios.get(`${constants.SD_API_HOST}/options`).then(response => {
 
 /**
  * Worker function responsible for processing tasks from a queue.
- * It runs indefinitely, acquiring a semaphore to ensure task processing synchronization,
+ * It runs indefinitely, acquiring semaphore to ensure task processing synchronization
  * and handles different task types (e.g., 'txt2img', 'img2img') by delegating to their respective processors.
  * The function updates task status, emits events, and releases the semaphore after each task or delay when the queue is empty.
  *
@@ -68,7 +68,7 @@ async function worker() {
  * We use this to ensure that if Forge was given a task outside of Navigator
  *  (such as the Web UI or another instance of Navigator), we don't assume that any provided data is associated with the
  *  task currently at the front of the queue.
- * This is accomplished by attaching the `navigator-JOB_ID` task ID to all task requests we make, and we can query the
+ * This is achieved by attaching the `navigator-JOB_ID` task ID to all task requests we make, and we can query the
  *  task ID we have, and Forge will tell us if that is actively being processed by Forge.
  *
  * @param {Object} task - The task object which contains details about the task.
@@ -136,7 +136,8 @@ async function checkForProgressAndEmit(task) {
  * Processes a text-to-image task by converting the task to Forge's expected request data, sending it to the backend API,
  *  and handling the task's progress and completion.
  *
- * Do note that this function doesn't actually retrieve progress previews from the backend. This occurs in {@link checkForProgressAndEmit}.
+ * Do note that this function doesn't retrieve progress previews from the backend.
+ * This occurs in {@link checkForProgressAndEmit}.
  *
  * @private
  * @param {Object} task - The task object containing all necessary parameters for text-to-image generation.
@@ -151,7 +152,7 @@ async function checkForProgressAndEmit(task) {
  * @param {string} task.sampler_name - The name of the sampling method to use for generation.
  * @param {string} [task.scheduler_name] - The name of the scheduler, if applicable.
  * @param {string} [task.upscaler_name] - The name of the upscaler to use for high-resolution processing.
- * @param {boolean} [task.force_hr_fix=false] - Whether to enable high resolution resizing explicitly.
+ * @param {boolean} [task.force_hr_fix=false] - Whether to enable high-resolution resizing explicitly.
  * @param {number} [task.denoising_strength] - Denoising strength for controlling the level of fidelity in high-resolution processing.
  * @param {number} [task.hrf_steps] - Steps for the high-resolution second pass, if applicable.
  * @param {number} [task.subseed] - Subseed for added randomness to the task.
@@ -159,7 +160,8 @@ async function checkForProgressAndEmit(task) {
  * @param {boolean} [task.image_enhancements=false] - Whether to apply pre-configured image enhancements.
  * @param {string} task.model_name - The model checkpoint to use for the generation process.
  * @param {string} task.job_id - A unique identifier for the submitted task.
- * @param {string|undefined} [task.first_pass_image] - An optional image (in base64) used for the base image of processing high-resolution upscaling (so that the backend doesn't have to regenerate the base image).
+ * @param {string|undefined} [task.first_pass_image] - An optional image (in base64) used for the base image of processing high-resolution upscaling
+ * (so that the backend doesn't have to regenerate the base image).
  * @param {string} task.origin - The origin identifier for client-server communication.
  *
  * @return {Promise<void>} Resolves when the task is complete and the generated image is saved or an error is emitted.
@@ -258,7 +260,7 @@ async function processTxt2ImgTask(task) {
 
             // This is the number of steps that the model will use during the HR Fix process.
             // In my experience, you generally don't need an extremely high number of steps.
-            // We clamp it to a maximum of 30, to prevent excessive wait times.
+            // We clamp it to a maximum of 30 to prevent excessive wait times.
             // However, this might be increased in the future.
             queuedTask.hr_second_pass_steps = clamp(queuedTask.steps, queuedTask.steps, 30);
 
@@ -411,7 +413,7 @@ async function writeImageToDB(jobId, image) {
             } else {
                 if(results.length > 0) {
                     const owner_id = results[0];
-                    // Retrieve image info data, and add it to the cache in the database
+                    // Retrieve image info data and add it to the cache in the database
                     axios.post(`${constants.SD_API_HOST}/png-info`, { image: image.toString() }).then(response => {
                         if(response.data !== undefined && response.data !== null) {
                             let info = response.data;
@@ -500,7 +502,8 @@ function getQueueSize() {
 }
 
 /**
- * Checks if the queue contains an item with the specified id. If an item is not in the queue, it might be in-progress.
+ * Checks if the queue contains an item with the specified id.
+ * If an item is not in the queue, it might be in progress.
  *
  * @param {string} id - The identifier of the item to search for in the queue.
  * @return {boolean} Returns true if the queue contains the item with the given id, otherwise false.
