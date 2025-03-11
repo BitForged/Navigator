@@ -124,8 +124,13 @@ export class CivitAi {
             })
             delete resp.data.images;
             // Update metadata cache in database
-            await database.asyncQuery("INSERT INTO model_metadata (hash, metadata_cache, metadata_provider, metadata_updated_at) VALUES (?, TO_BASE64(?), ?, ?) ON DUPLICATE KEY UPDATE metadata_cache = TO_BASE64(?), metadata_updated_at = ?, metadata_provider = ?",
-                [hash, JSON.stringify(resp.data), ModelMetadataProvider.CIVITAI, new Date(), JSON.stringify(resp.data), new Date(), ModelMetadataProvider.CIVITAI])
+            const modelVersionId = resp.data.id;
+            if(modelVersionId === undefined || modelVersionId === null) {
+                console.error("!!Model version ID is null or undefined!", resp.data);
+                return undefined;
+            }
+            await database.asyncQuery("INSERT INTO model_metadata (hash, metadata_cache, metadata_provider, metadata_id, metadata_updated_at) VALUES (?, TO_BASE64(?), ?, ?, ?) ON DUPLICATE KEY UPDATE metadata_cache = TO_BASE64(?), metadata_updated_at = ?, metadata_provider = ?, metadata_id = ?",
+                [hash, JSON.stringify(resp.data), ModelMetadataProvider.CIVITAI, modelVersionId, new Date(), JSON.stringify(resp.data), new Date(), ModelMetadataProvider.CIVITAI, modelVersionId])
             console.log(
                 "Updated metadata cache for model version with hash " + hash + " in database."
             )
@@ -133,6 +138,58 @@ export class CivitAi {
         } catch(error) {
             if(isAxiosError(error)) {
                 console.error(error.response?.data);
+            } else {
+                console.error("Unknown error occurred when checking for matching model version: ", error);
+            }
+            return;
+        }
+    }
+
+    async getModelVersionById(id: number): Promise<CivitAiModelVersion | undefined> {
+        // Check to see if we've already cached the metadata (and it's not older than 7 days)
+        const metadata = await database.asyncQuery("SELECT id, metadata_id, FROM_BASE64(metadata_cache) AS metadata_cache, metadata_updated_at FROM model_metadata WHERE metadata_id = ? AND metadata_provider = ? LIMIT 1", [id, ModelMetadataProvider.CIVITAI])
+        if(metadata.length > 0) {
+            if(metadata[0].metadata_updated_at > Date.now() - 1000 * 60 * 60 * 24 * 7 /* Ensure the cache is not more than 7 days old */) {
+                const metadataObj = JSON.parse(metadata[0].metadata_cache.toString('utf8'));
+                if(isCivitAiModelVersion(metadataObj)) {
+                    return metadataObj;
+                } else {
+                    console.error("Invalid metadata found in database: ", metadataObj);
+                }
+            } else {
+                console.warn(`Metadata for ${id} cache is older than 7 days, fetching new metadata from API.`)
+            }
+        }
+
+        if(!await this.isAuthenticated()) {
+            console.error("Not authenticated and and therefore unable to fetch model version (not in cache)!")
+            return;
+        }
+
+        try {
+            let resp = await axios.get<CivitAiModelVersion>(`${this.getEndpoint(`model-versions/${id}`)}`, {
+                headers: {
+                    Authorization: "Bearer " + this.apiKey
+                }
+            })
+            delete resp.data.images;
+            // Update metadata cache in database
+            const modelVersionId = resp.data.id;
+            const modelVersionHash = resp.data.files[0].hashes.AutoV3;
+            if(modelVersionId === undefined || modelVersionId === null) {
+                console.error("!!Model version ID is null or undefined!", resp.data);
+                return undefined;
+            }
+            await database.asyncQuery("INSERT INTO model_metadata (hash, metadata_cache, metadata_provider, metadata_id, metadata_updated_at) VALUES (?, TO_BASE64(?), ?, ?, ?) ON DUPLICATE KEY UPDATE metadata_cache = TO_BASE64(?), metadata_updated_at = ?, metadata_provider = ?, metadata_id = ?",
+                [modelVersionHash, JSON.stringify(resp.data), ModelMetadataProvider.CIVITAI, modelVersionId, new Date(), JSON.stringify(resp.data), new Date(), ModelMetadataProvider.CIVITAI, modelVersionId])
+            console.log(
+                "Updated metadata cache for model version with id " + modelVersionId + " in database."
+            )
+            return resp.data;
+        } catch(error) {
+            if(isAxiosError(error)) {
+                console.error(error.response?.data);
+                console.error("An error was returned from the CivitAI API: ", error.response?.status)
             } else {
                 console.error("Unknown error occurred when checking for matching model version: ", error);
             }
