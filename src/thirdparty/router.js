@@ -1,6 +1,8 @@
 import {CivitAi} from './civitai';
 import {getAvailableStorage, downloadFileToPath} from '@/storage';
 import {Router} from "express";
+import {isAuthenticated} from "@/security";
+import axios from "axios";
 
 const civitai = new CivitAi();
 export const thirdPartyRouter = new Router();
@@ -55,3 +57,33 @@ thirdPartyRouter.get('/civitai/download/:modelId', async (req, res) => {
         res.status(404).json({message: 'Model not found'});
     }
 });
+
+thirdPartyRouter.get('/civitai/api-proxy/*', isAuthenticated, async (req, res) => {
+    // Proxies API requests from downstream clients to CivitAI with our API key (and to bypass CORS)
+    try {
+        const requestedPath = req.params[0]
+        const queryParams = req.query
+        console.log('Found request to forward to CivitAI API: ', requestedPath, queryParams)
+        const upstreamUrl = `https://civitai.com/api/v1/${requestedPath}`
+        let upstreamResponse = await axios.get(upstreamUrl, {
+            params: queryParams,
+            headers: {
+                Authorization: `Bearer ${civitai.getApiKey()}`,
+                "User-Agent": "Navigator"
+            }
+        })
+        res.status(upstreamResponse.status).json(upstreamResponse.data);
+    } catch (error) {
+        if (error.response) {
+            // The upstream API returned an error status code
+            res.status(error.response.status).json(error.response.data);
+        } else if (error.request) {
+            // The request was made, but no response was received
+            res.status(500).send('Upstream API did not respond');
+        } else {
+            // Something happened in setting up the request that triggered an Error
+            res.status(500).send('An error occurred');
+            console.error(error);
+        }
+    }
+})
