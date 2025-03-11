@@ -18,7 +18,7 @@ thirdPartyRouter.get('/test_civitai', async (req, res) => {
     res.json({isAuthenticated});
 });
 
-thirdPartyRouter.get('/civitai/downloads_enabled', isAuthenticated, isArtificer, async (req, res) => {
+thirdPartyRouter.get('/civitai/downloads_enabled', isAuthenticated, async (req, res) => {
     if (process.env.MODEL_DIR === undefined) {
         // Can't perform downloads if the directory needed for this is undefined
         res.json({ downloadsEnabled: false, message: "Model directory not set" });
