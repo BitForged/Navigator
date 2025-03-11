@@ -64,6 +64,26 @@ export enum CivitAiModelType {
     Poses = "Poses"
 }
 
+export function getFolderPathForModelType(type: CivitAiModelType): string | null {
+    switch(type) {
+        case CivitAiModelType.LORA:
+            return "Lora";
+        case CivitAiModelType.Controlnet:
+            return "ControlNet";
+        case CivitAiModelType.Poses:
+            throw new Error("Unsupported model type: " + type);
+        case CivitAiModelType.Checkpoint:
+            return "Stable-diffusion";
+        case CivitAiModelType.TextualInversion:
+            return "../embedding"; // A bit of a unique case, Forge doesn't store the embeddings in the `models`
+                                    // folder, but a dir up instead
+        case CivitAiModelType.Hypernetwork:
+            return "hypernetworks";
+        case CivitAiModelType.AestheticGradient:
+            throw new Error("Unsupported model type: " + type);
+    }
+}
+
 export type CivitAiModelResponse = CivitAiModel;
 
 /**
