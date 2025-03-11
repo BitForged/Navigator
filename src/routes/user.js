@@ -2,9 +2,12 @@ const router = require('express').Router();
 
 const security = require('../security');
 const database = require('../database');
+const {getPermissionRole} = require("@/security");
 const db = database.getConnectionPool();
 
-router.get(/* /api/user/*/ '/me', security.isAuthenticated, (req, res) => {
+router.get(/* /api/user/*/ '/me', security.isAuthenticated, async (req, res) => {
+    const user = req.user;
+    user.role = await getPermissionRole(req.user.discord_id)
     res.json({ user: req.user });
 });
 
