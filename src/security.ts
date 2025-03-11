@@ -52,6 +52,14 @@ export async function isAuthenticated(req: Request, res: Response, next: NextFun
     });
 }
 
+export async function isArtificer(req: Request, res: Response, next: NextFunction): Promise<void> {
+    if(await getPermissionRole(req.user?.discord_id) < PermissionRole.ARTIFICER) {
+        res.status(401).json({message: 'Unauthorized'});
+        return;
+    }
+    next();
+}
+
 /**
  * Middleware function to check if a user has administrator permissions.
  *
