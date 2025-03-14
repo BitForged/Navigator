@@ -117,13 +117,14 @@ async function runMigrations() {
         const migrationStr = fs.readFileSync(migrationPath).toString();
         try {
             await database.asyncQuery(migrationStr);
+            await database.asyncQuery('INSERT INTO migrations (migration_id) VALUES (?)', migration.index);
+            highestMigrationRan++;
         } catch(err) {
             console.error(err);
-            console.error("An issue occurred while trying to run this migration - cannot continue!")
+            console.error(`An issue occurred while trying to run this migration (${migration.name}) - cannot continue!`)
             console.error("Failed to process migrations, terminating!");
+            process.exit(2);
         }
-        await database.asyncQuery('INSERT INTO migrations (migration_id) VALUES (?)', migration.index);
-        highestMigrationRan++;
     }
 
     return true;
