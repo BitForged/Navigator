@@ -202,7 +202,8 @@ async function processTxt2ImgTask(task) {
             scheduler: task.scheduler_name,
             enable_hr: false,
             hr_upscaler: task.upscaler_name,
-            hr_additional_modules: [], // Needed for SD Forge WebUI
+            // FIXME: The below was needed for Forge, but recently fixed. Eventually this can be removed.
+            hr_additional_modules: [],
             save_images: false,
             override_settings: {
                 sd_model_checkpoint: task.model_name

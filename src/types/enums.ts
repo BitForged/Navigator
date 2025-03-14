@@ -3,3 +3,8 @@ export enum ModelMetadataProvider {
     CIVITAI,
     HUGGINGFACE // Not Implemented Yet
 }
+
+export enum ModelType {
+    LORA,
+    CHECKPOINT,
+}
