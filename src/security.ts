@@ -126,15 +126,32 @@ export async function getPermissionRole(userId?: string): Promise<PermissionRole
 
 /**
  * Updates the permission role of a user in the database. If the user already exists, their role is updated - otherwise
- *  the user is added into the users table.
+ *  the user is added into the users table. If this is the first user in the table, the passed in role is ignored and
+ *  the APEX (Superuser) role is granted instead.
  *
  * @param {string} userId - The unique identifier of the user whose role is being set or updated.
  * @param {PermissionRole} role - The role to be assigned to the user.
  * @return {Promise<void>} A promise that resolves when the operation is completed.
  */
 export async function setPermissionRole(userId: string, role: PermissionRole): Promise<void> {
+    if(await isUsersTableEmpty()) {
+        console.warn(`First user (ID: ${userId}) to authenticate! Setting role to APEX (Superuser)`)
+        role = PermissionRole.APEX
+    }
     await asyncQuery(`INSERT INTO users (id, role) VALUES (?, ?) ON DUPLICATE KEY UPDATE role = ?`, [userId, role, role])
     return
+}
+
+/**
+ * Checks if the "users" table in the database is empty.
+ * Used when setting the permission role of a user, if they are the
+ *  first user, then they will be automatically granted superuser privileges.
+ *
+ * @return {Promise<boolean>} A promise that resolves to `true` if the "users" table is empty, or `false` otherwise.
+ */
+export async function isUsersTableEmpty(): Promise<boolean> {
+    let results = await asyncQuery(`SELECT id FROM users WHERE role > 0 LIMIT 1`)
+    return results.length === 0
 }
 
 /**
