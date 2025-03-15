@@ -349,6 +349,10 @@ async function queueImg2ImgRequest(req, res, owner_id, taskData = undefined) {
 }
 
 router.post('/queue/img2img', async (req, res) => {
+    if(process.env.ALLOW_LEGACY_BOT_ENDPOINTS === undefined || (process.env.ALLOW_LEGACY_BOT_ENDPOINTS !== true || process.env.ALLOW_LEGACY_BOT_ENDPOINTS !== "true")) {
+        res.status(400).json({ error: 'This endpoint is not enabled. Please use /api/queue/user/img2img instead.' });
+        return;
+    }
     if(req.body.owner_id === undefined) {
         res.status(400).json({ error: 'Missing authentication data' });
         return;
@@ -357,6 +361,10 @@ router.post('/queue/img2img', async (req, res) => {
 });
 
 router.post('/queue/txt2img', async (req, res) => {
+    if(process.env.ALLOW_LEGACY_BOT_ENDPOINTS === undefined || (process.env.ALLOW_LEGACY_BOT_ENDPOINTS !== true || process.env.ALLOW_LEGACY_BOT_ENDPOINTS !== "true")) {
+        res.status(400).json({ error: 'This endpoint is not enabled. Please use /api/queue/user/txt2img instead.' });
+        return;
+    }
     if(req.body.owner_id === undefined) {
         res.status(400).json({ error: 'Missing authentication data' });
         return;
