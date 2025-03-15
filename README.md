@@ -1,6 +1,69 @@
 # BitJourney Navigator
 
-Navigator is a middleware that bridges the gap between the BitJourney clients and the Stable Diffusion backend API.
+Navigator is a middleware that bridges the gap between the BitJourney clients and the Stable Diffusion backend ([Forge preferred](https://github.com/lllyasviel/stable-diffusion-webui-forge/)) API.
+
+## Requirements
+
+To use Navigator, you'll need a few components:
+
+- A compatible backend that can generate images. I'm nowhere near smart enough to build that on my own, but thankfully, 
+  there are plenty of smart people in the Stable Diffusion space. Navigator is tested against [Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge/) but will *probably* work with Automatic1111 or other forks of A1111.
+  - Do note that while *Navigator* needs to be able to talk to Forge, downstream clients do not need access to Forge's API. Any API calls they require are effectively proxied through Navigator.
+  - It is recommended that Navigator and Forge be on the same system, or at least have access to the same filesystem (if they're close latency-wise, you could use SSHFS if really necessary). Otherwise, model downloading and other similar features won't work properly.
+  - Install any required Forge patches listed below
+
+- A MySQL or MariaDB database
+  - While Navigator and Forge don't need to be on the same system, Navigator and the database *should* be on the same system unless you have a significant reason for it not to be.
+
+- A [Discord "Application"](https://discord.com/developers/applications) since Navigator's authentication system is via Discord OAuth.
+  - This in theory could be switched out with any other OAuth provider since the code is fairly self-contained (there are no actual Discord APIs used; It's purely an identity provider), though you'd need a couple of downstream client modifications too.
+  - Grab a Client ID and Client Secret from the `OAuth` tab of your application
+    - The Client ID will need to be used in downstream clients, but do not share the Client Secret with clients.
+  - Specify a Redirect URL of the index page for Compass (or follow the scheme that your chosen client requires). For Compass, that would be `https://compass.yourdomain.tld/` as an example.
+    - This needs to match on both the frontend and backend.
+  - Optionally, you can grab a bot token as well if you want Navigator to try to validate that a user ID exists in the `/api/admin/authorize-user/:discordId` endpoint
+    - If a bot token is not provided, Navigator will blindly assume that the user ID you've provided actually exists on Discord.
+
+- Some sort of downstream client that is compatible with Navigator's API. Unless you intend to create your own (which you're welcome to do!), that will probably be [Compass](https://github.com/BitForged/Compass).
+
+## Disclaimers
+
+Navigator and the rest of the BitJourney stack are not enterprise software (though Navigator and Compass are AGPLv3 licensed, so if you're willing to put in some serious leg work, I suppose it *could* be?).
+Do not expect to use this stack to run a business.
+
+A lot (I'd say 95%) of the design decisions were made by the fact that the use-case the stack was built for is to be used by a few friends, and how it is run on our infrastructure.
+
+Some of the design decisions even came down to me saying, "This is just the way I want to do it."
+
+Navigator and Compass are also under constant development, and while I do not expect instances to break (as I'd like ours to not break as well), I cannot make any guarantees.
+
+You should, at the very least, plan to make backups of your database before upgrades.
+
+Additionally, while instances themselves may not break (though, there are no guarantees)—you should expect to see breaking API changes at random until the API design hits a stable point.
+
+(I generally try to avoid pushing breaking API changes on Navigator's side until Compass' correlating changes are ready; So, when updating one, update the other as well!)
+
+You should keep this in mind should you try to design a downstream client for Navigator.
+
+Finally, as with all open source projects that exist out in the world, there are no guarantees of support or updates in general. While I'm interested in Stable Diffusion *now*, should that change later, development of this project may (indefinitely) pause.
+
+If any of this gives you pause, that's understandable! I try to be as upfront and transparent about things where and when I can be. At the end of the day, I'm *sharing* something, not *selling* it.
+
+## Forge Patches
+
+- First Pass Image (`./forge_patches/add_first_pass_image_to_txt2img_api.patch`): Required
+  - This patch allows the `/sdapi/v1/txt2img` endpoint to accept the base64 string of a base image when using HiRes Fix. When provided, instead of regenerating the original image during an upscale process, the provided copy of the original image is used instead which reduces the time it takes to do an upscale.
+    - Patch has already been submitted upstream to Auto1111 and is awaiting review, should it be accepted, it should trickle down to Forge eventually as well.
+
+To apply patches, navigate to the directory where Forge is installed, then checkout to a known good commit, and use the `patch` command:
+
+```shell
+$ cd /your/forge/location
+$ git checkout 5e1dcd35a8535564884a4116f6bbb37dbb8dfc46
+$ patch -p1 < name_of_patch.patch
+```
+
+(Then reboot Forge if it was already running)
 
 ## Installation
 
@@ -9,23 +72,59 @@ npm install
 cp .env.example .env
 ```
 
-After that, you need to fill the `.env` file with the correct values. The values should be self-explanatory.
+After that, you need to fill the `.env` file with the correct values. The values should are fairly thoroughly documented in the `.env.example` file.
+
+Alternatively, since these just get loaded into the process' environmental variables, you can set them as environmental variables if you prefer (such as for Docker).
+
+Note that you should check `.env.example` for updates whenever you update Navigator, as Navigator won't attempt to write new entries to the file (though it tries to keep reasonable behavior when its undefined).
 
 ## Running
 
 ```bash
-npm run build
+npm run build # Be sure to run this any time you update Navigator, so that the TypeScript files can be transpiled!
 npm run start
 ```
 
+Note that since Navigator tries to run database migrations on startup, it will exit very quickly if it cannot connect to the database.
+
+Assuming that Navigator starts up correctly (ie, it doesn't crash) check to see if the API is live by making a request to http://your_hostname:PORT/
+ \- it is a simple GET request that can be executed in your browser and will return a JSON object that says "Hello World!"
+
+Since Navigator uses an allowlist for OAuth authentication, you'll need to grant any User IDs standard level access. To do this, grab the `SUPERUSER_ADMIN_TOKEN` you defined and make the following request:
+
+```shell
+curl -H "Authorization: INSERT_SUPERUSER_ADMIN_TOKEN_HERE" http://instanceip:PORT/api/admin/authorize-user/DISCORD_USER_ID
+```
+
+The above endpoint requires Administrator authentication, the `SUPERUSER_ADMIN_TOKEN` acts as a static/persistent superuser token - hence why you need to make sure its set, so that you can at least authorize yourself.
+
+Navigator will explicitly grant the first user in the `users` table superuser privileges when using the `.../authorize-user` endpoint. If your `users` table only contains disabled users (`role = 0`) then this will still apply.
+
+Alternatively, you can manually edit the database to authorize yourself (or to set a permission role that is higher than the standard role, aside from the first authorization, since there is no API for this yet).
+
+To disable a user's access, make the same request except to the `/api/admin/disable-user/DISCORD_USER_ID` endpoint instead. This prevents them from logging in (and if they already have an access token, it will effectively be treated as if they weren't logged in).
+  However, it **does not remove their saved data (generated images)**.
+
+Assuming you are not designing your own downstream client, you'll probably want to setup [Compass](https://github.com/BitForged/Compass) next.
+
 ## Concepts
 Navigator operates across two ports, one for HTTP and one for WebSockets (via socket.io). The default ports are 3333 and 3334, respectively. You can change these values in the `.env` file.
+
+Feel free to reverse proxy these! But do so with caution, do not leave the `/api/queue/txt2img` or `/api/queue/img2img` endpoints exposed! These are only enabled if `ALLOW_LEGACY_BOT_ENDPOINTS` is set to `true` (defaults to `false`).
+  Those endpoints are intended to be used by the BitJourney Discord bot, which is allowed to submit job requests on behalf of any user ID. This was the first downstream client, and had no authentication (remember what was mentioned in the disclaimer section above?).
+  They're firewalled on our instance to the internal network. If you enable them (it is highly unlikely you need it enabled), then they should not be public because it requires zero authentication.
+
+All other endpoints that trigger image generation require authentication data to be provided.
 
 The HTTP API is used to send off tasks to be added to a queue, while the WebSocket API is used to receive updates on the status of the tasks.
 
 Additionally, the HTTP API is used to render both preview and final images; this will be further expanded on later in the README.
 
 ## HTTP API
+
+**NOTE:** The API documentation below is definitely out of date, I'm looking to provide an OpenAPI specification file for it soon to serve as proper documentation.
+
+The current documentation is provided below as a starting point to Navigator's API while more up-to-date documentation is setup.
 
 ### GET /api/models
 

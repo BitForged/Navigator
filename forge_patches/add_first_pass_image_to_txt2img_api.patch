@@ -1,0 +1,13 @@
+diff --git a/modules/api/api.py b/modules/api/api.py
+index d4851fd4..c5d0dae9 100644
+--- a/modules/api/api.py
++++ b/modules/api/api.py
+@@ -477,6 +477,9 @@ class Api:
+                 p.scripts = script_runner
+                 p.outpath_grids = opts.outdir_txt2img_grids
+                 p.outpath_samples = opts.outdir_txt2img_samples
++                if p.firstpass_image is not None:
++                    p.firstpass_image = decode_base64_to_image(p.firstpass_image)
+
+                 try:
+                     shared.state.begin(job="scripts_txt2img")
