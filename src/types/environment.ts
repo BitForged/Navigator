@@ -8,6 +8,7 @@ declare global {
             BOT_TOKEN: undefined | string;
             IMAGE_PIXEL_LIMIT: undefined | number;
             MODEL_DIR: undefined | string;
+            ENABLE_DEMO_USER: undefined | boolean;
         }
     }
 }

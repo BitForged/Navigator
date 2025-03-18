@@ -6,6 +6,7 @@ import {isJwtNavigatorUser} from "@/types/express";
 
 const SECRET_KEY = process.env.SECRET_KEY
 const SUPERUSER_KEY = process.env.SUPERUSER_ADMIN_TOKEN
+const DEMO_USER_ENABLED = process.env.ENABLE_DEMO_USER || false;
 
 /**
  * Middleware function to check if a user is authenticated based on the `Authorization` header.
@@ -37,7 +38,12 @@ export async function isAuthenticated(req: Request, res: Response, next: NextFun
             return;
         }
         if (typeof user !== 'string' && user !== undefined && isJwtNavigatorUser(user)) {
-            // Reject access if permission role is 0 / NONE
+            if (!DEMO_USER_ENABLED && user.discord_id === 'demo_user') {
+                // Demo JWT was granted, but the account was later disabled - interpret this as a rejection
+                res.status(401).json({message: 'Unauthorized', error: 'Demo user was disabled'});
+                return;
+            }
+            // Reject access if the permission role is 0 / NONE
             if (await getPermissionRole(user.discord_id) === PermissionRole.NONE) {
                 res.status(401).json({message: 'Unauthorized', error: 'User is disabled'});
                 return;
@@ -110,6 +116,14 @@ export async function getPermissionRole(userId?: string): Promise<PermissionRole
         return PermissionRole.APEX;
     }
 
+    if(userId === 'demo_user') {
+        if(DEMO_USER_ENABLED) {
+            return PermissionRole.ARTIFICER;
+        } else {
+            return PermissionRole.NONE; // Demo user was likely disabled, treat as unauthenticated/disabled
+        }
+    }
+
     const users = await asyncQuery(`SELECT * FROM users WHERE id = ?`, [userId]) as Array<User>;
     if(users.length === 0) {
         if(await hasExistingData(userId)) {
@@ -137,6 +151,10 @@ export async function setPermissionRole(userId: string, role: PermissionRole): P
     if(await isUsersTableEmpty()) {
         console.warn(`First user (ID: ${userId}) to authenticate! Setting role to APEX (Superuser)`)
         role = PermissionRole.APEX
+    }
+    if(userId === 'demo_user') {
+        // The demo account cannot have the permission role changed
+        return
     }
     await asyncQuery(`INSERT INTO users (id, role) VALUES (?, ?) ON DUPLICATE KEY UPDATE role = ?`, [userId, role, role])
     return
