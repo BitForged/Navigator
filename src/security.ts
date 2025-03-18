@@ -45,7 +45,7 @@ export async function isAuthenticated(req: Request, res: Response, next: NextFun
             }
             // Reject access if the permission role is 0 / NONE
             if (await getPermissionRole(user.discord_id) === PermissionRole.NONE) {
-                res.status(401).json({message: 'Unauthorized', error: 'User is disabled'});
+                res.status(403).json({message: 'Forbidden', error: 'User is disabled', error_code: 'USER_DISABLED'});
                 return;
             }
             req.user = user;

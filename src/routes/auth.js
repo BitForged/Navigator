@@ -62,7 +62,7 @@ router.post('/login', async (req, res) => {
         } else {
             jwtToken = jwt.sign({discord_id: user.data.id, role}, SECRET_KEY);
         }
-        res.json({token: jwtToken, user: user.data});
+        res.json({token: jwtToken, user: user.data, role});
     }).catch(err => {
         console.error(err);
         res.status(401).json({error: 'Authentication through Discord failed'});
