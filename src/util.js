@@ -1,6 +1,6 @@
-const database = require('./database');
-const constants = require('./constants');
-const axios = require('axios');
+const database = require("./database");
+const constants = require("./constants");
+const axios = require("axios");
 
 // Samplers, Schedulers, and Upscaler Models do not really change, we can keep a cache of these to avoid
 //  needing to hit the backend API for these with every single validation request.
@@ -18,7 +18,7 @@ let upscalerCache = [];
  * @return {boolean} Returns true if the diffusion request is valid (contains all required fields); otherwise, false.
  */
 function isValidDiffusionRequest(task_data) {
-    return !(!task_data.owner_id || !task_data.model_name || !task_data.prompt);
+  return !(!task_data.owner_id || !task_data.model_name || !task_data.prompt);
 }
 
 /**
@@ -30,8 +30,8 @@ function isValidDiffusionRequest(task_data) {
  * @return {Promise<boolean>} A promise that resolves to true if the user owns the category, otherwise false.
  */
 async function doesUserOwnCategory(userId, categoryId) {
-    let category = await database.getCategoryById(categoryId);
-    return category.owner_id === userId;
+  let category = await database.getCategoryById(categoryId);
+  return category.owner_id === userId;
 }
 
 /**
@@ -42,24 +42,24 @@ async function doesUserOwnCategory(userId, categoryId) {
  * @return {Promise<string>} The validated model name, or a default model name if the input is not found.
  */
 async function validateModelName(modelName) {
-    let response = await axios.get(`${constants.SD_API_HOST}/sd-models`);
-    let api_models = response.data;
-    for(let model of api_models) {
-        if(model.model_name === modelName) {
-            return modelName;
-        }
+  let response = await axios.get(`${constants.SD_API_HOST}/sd-models`);
+  let api_models = response.data;
+  for (let model of api_models) {
+    if (model.model_name === modelName) {
+      return modelName;
     }
+  }
 
-    // If the model name was not found in the above, check if it's a model from our database
-    let db_models = await database.getModels();
-    for(let model of db_models) {
-        if(model.friendly_name === modelName) {
-            return modelName;
-        }
+  // If the model name was not found in the above, check if it's a model from our database
+  let db_models = await database.getModels();
+  for (let model of db_models) {
+    if (model.friendly_name === modelName) {
+      return modelName;
     }
+  }
 
-    // Finally, if the model name was not found in the API or our database, return the first model name from the API
-    return api_models[0].model_name;
+  // Finally, if the model name was not found in the API or our database, return the first model name from the API
+  return api_models[0].model_name;
 }
 
 /**
@@ -72,33 +72,33 @@ async function validateModelName(modelName) {
  * @return {Promise<string>} A promise resolving to a valid sampler name.
  */
 async function validateSamplerName(samplerName) {
-    if(samplerCache.length > 0) {
-        for(let sampler of samplerCache) {
-            if(sampler.name === samplerName) {
-                return samplerName;
-            }
-            if(sampler.aliases.includes(samplerName)) {
-                return sampler.name;
-            }
-        }
-    } else {
-        let response = await axios.get(`${constants.SD_API_HOST}/samplers`);
-        let samplers = response.data;
-        for(let sampler of samplers) {
-            if(sampler.name === samplerName) {
-                return samplerName;
-            }
-            if(sampler.aliases.includes(samplerName)) {
-                return sampler.name;
-            }
-        }
-        // Update cache of samplers
-        samplerCache = samplers;
-        console.log("Sampler cache updated!");
+  if (samplerCache.length > 0) {
+    for (let sampler of samplerCache) {
+      if (sampler.name === samplerName) {
+        return samplerName;
+      }
+      if (sampler.aliases.includes(samplerName)) {
+        return sampler.name;
+      }
     }
+  } else {
+    let response = await axios.get(`${constants.SD_API_HOST}/samplers`);
+    let samplers = response.data;
+    for (let sampler of samplers) {
+      if (sampler.name === samplerName) {
+        return samplerName;
+      }
+      if (sampler.aliases.includes(samplerName)) {
+        return sampler.name;
+      }
+    }
+    // Update cache of samplers
+    samplerCache = samplers;
+    console.log("Sampler cache updated!");
+  }
 
-    // If the sampler name was not found in the above, return the first sampler name from the API
-    return samplerCache[0].name;
+  // If the sampler name was not found in the above, return the first sampler name from the API
+  return samplerCache[0].name;
 }
 
 /**
@@ -109,28 +109,28 @@ async function validateSamplerName(samplerName) {
  * @return {Promise<string|object>} The matched scheduler object if found, the scheduler name if matched from the external data, or the default "automatic" if no match is found.
  */
 async function validateSchedulerName(schedulerName) {
-    if(schedulerCache.length > 0) {
-        for(let scheduler of schedulerCache) {
-            if(scheduler.name === schedulerName) {
-                return scheduler.name;
-            }
-        }
-    } else {
-        let response = await axios.get(`${constants.SD_API_HOST}/schedulers`);
-        let schedulers = response.data;
-        for(let scheduler of schedulers) {
-            if(scheduler.name === schedulerName) {
-                return schedulerName;
-            }
-        }
-
-        // Update local scheduler cache
-        schedulerCache = schedulers;
-        console.log("Scheduler cache updated!");
+  if (schedulerCache.length > 0) {
+    for (let scheduler of schedulerCache) {
+      if (scheduler.name === schedulerName) {
+        return scheduler.name;
+      }
+    }
+  } else {
+    let response = await axios.get(`${constants.SD_API_HOST}/schedulers`);
+    let schedulers = response.data;
+    for (let scheduler of schedulers) {
+      if (scheduler.name === schedulerName) {
+        return schedulerName;
+      }
     }
 
-    // If none matched, then just fall back to "automatic"
-    return "automatic";
+    // Update local scheduler cache
+    schedulerCache = schedulers;
+    console.log("Scheduler cache updated!");
+  }
+
+  // If none matched, then just fall back to "automatic"
+  return "automatic";
 }
 
 /**
@@ -142,36 +142,36 @@ async function validateSchedulerName(schedulerName) {
  * @return {Promise<string>} A promise that resolves to a valid upscaler name.
  */
 async function validateUpscalerName(upscalerName) {
-    if(upscalerCache.length > 0) {
-        for(let upscaler of upscalerCache) {
-            if(upscaler.name === upscalerName) {
-                return upscaler.name;
-            }
-        }
-    } else {
-        let response = await axios.get(`${constants.SD_API_HOST}/upscalers`);
-        let upscalers = response.data;
-        for(let upscaler of upscalers) {
-            if(upscaler.name === upscalerName) {
-                return upscalerName;
-            }
-        }
-        // Update local upscaler cache
-        upscalerCache = upscalers;
-        console.log("Upscaler cache updated!");
+  if (upscalerCache.length > 0) {
+    for (let upscaler of upscalerCache) {
+      if (upscaler.name === upscalerName) {
+        return upscaler.name;
+      }
     }
-
-    // Check if "4x_NMKD-Siax_200k" exists, and use that if so - unless that was already the one that we tried earlier
-    if(upscalerName !== "4x_NMKD-Siax_200k") {
-        for(let upscaler of upscalerCache) {
-            if(upscaler.name === "4x_NMKD-Siax_200k") {
-                return "4x_NMKD-Siax_200k";
-            }
-        }
+  } else {
+    let response = await axios.get(`${constants.SD_API_HOST}/upscalers`);
+    let upscalers = response.data;
+    for (let upscaler of upscalers) {
+      if (upscaler.name === upscalerName) {
+        return upscalerName;
+      }
     }
+    // Update local upscaler cache
+    upscalerCache = upscalers;
+    console.log("Upscaler cache updated!");
+  }
 
-    // The previous upscalers provided did not match - fall back to "RealESRGAN_x4"
-    return "RealESRGAN_x4";
+  // Check if "4x_NMKD-Siax_200k" exists, and use that if so - unless that was already the one that we tried earlier
+  if (upscalerName !== "4x_NMKD-Siax_200k") {
+    for (let upscaler of upscalerCache) {
+      if (upscaler.name === "4x_NMKD-Siax_200k") {
+        return "4x_NMKD-Siax_200k";
+      }
+    }
+  }
+
+  // The previous upscalers provided did not match - fall back to "RealESRGAN_x4"
+  return "RealESRGAN_x4";
 }
 
 /**
@@ -182,34 +182,35 @@ async function validateUpscalerName(upscalerName) {
  * @return The formatted "Always On Scripts" object that the Forge API requires
  */
 function getAlwaysOnScripts(hasFreeU, hasSAG) {
-    let alwaysOnScripts = {};
-    if(hasFreeU === true) {
-        alwaysOnScripts["FreeU Integrated (SD 1.x, SD 2.x, SDXL)"] = {
-            "args": [
-                // This is a recommended set of parameters for SDXL, but generally SDXL models tend to be used these days
-                // The following comments will identify the arguments to the WebUI settings
-                true, // Enabled
-                1.1,  // B1
-                1.2,  // B2
-                0.6,  // S1
-                0.4,  // S2
-                0,    // Start Step
-                1     // End Step
-            ]
-        }
-    }
+  let alwaysOnScripts = {};
+  if (hasFreeU === true) {
+    alwaysOnScripts["FreeU Integrated (SD 1.x, SD 2.x, SDXL)"] = {
+      args: [
+        // This is a recommended set of parameters for SDXL, but generally SDXL models tend to be used these days
+        // The following comments will identify the arguments to the WebUI settings
+        true, // Enabled
+        1.1, // B1
+        1.2, // B2
+        0.6, // S1
+        0.4, // S2
+        0, // Start Step
+        1, // End Step
+      ],
+    };
+  }
 
-    if(hasSAG === true) {
-        alwaysOnScripts["SelfAttentionGuidance Integrated (SD 1.x, SD 2.x, SDXL)"] = {
-            "args": [
-                true, // Enabled
-                0.5,  // Scale
-                2,    // Blur Sigma
-                1     // Blur mask threshold
-            ]
-        }
-    }
-    return alwaysOnScripts;
+  if (hasSAG === true) {
+    alwaysOnScripts["SelfAttentionGuidance Integrated (SD 1.x, SD 2.x, SDXL)"] =
+      {
+        args: [
+          true, // Enabled
+          0.5, // Scale
+          2, // Blur Sigma
+          1, // Blur mask threshold
+        ],
+      };
+  }
+  return alwaysOnScripts;
 }
 
 /**
@@ -220,28 +221,28 @@ function getAlwaysOnScripts(hasFreeU, hasSAG) {
  * @return {Object} A new object derived from the input task with certain properties removed.
  */
 function cleanseTask(task) {
-    let cleansedTask = {...task};
-    delete cleansedTask.prompt;
-    delete cleansedTask.negative_prompt;
-    delete cleansedTask.owner_id;
-    delete cleansedTask.width;
-    delete cleansedTask.height;
-    if(cleansedTask.backendRequest) {
-        delete cleansedTask.backendRequest;
-    }
-    if(cleansedTask.first_pass_image) {
-        delete cleansedTask.first_pass_image;
-    }
-    return cleansedTask;
+  let cleansedTask = { ...task };
+  delete cleansedTask.prompt;
+  delete cleansedTask.negative_prompt;
+  delete cleansedTask.owner_id;
+  delete cleansedTask.width;
+  delete cleansedTask.height;
+  if (cleansedTask.backendRequest) {
+    delete cleansedTask.backendRequest;
+  }
+  if (cleansedTask.first_pass_image) {
+    delete cleansedTask.first_pass_image;
+  }
+  return cleansedTask;
 }
 
 module.exports = {
-    isValidDiffusionRequest,
-    doesUserOwnCategory,
-    validateModelName,
-    validateSamplerName,
-    validateSchedulerName,
-    validateUpscalerName,
-    getAlwaysOnScripts,
-    cleanseTask
-}
+  isValidDiffusionRequest,
+  doesUserOwnCategory,
+  validateModelName,
+  validateSamplerName,
+  validateSchedulerName,
+  validateUpscalerName,
+  getAlwaysOnScripts,
+  cleanseTask,
+};

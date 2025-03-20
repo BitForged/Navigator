@@ -1,11 +1,11 @@
-import {verify} from 'jsonwebtoken';
-import { Request, Response, NextFunction } from 'express';
-import {asyncQuery} from "@/database";
-import {User} from "@/types/database";
-import {isJwtNavigatorUser} from "@/types/express";
+import { verify } from "jsonwebtoken";
+import { Request, Response, NextFunction } from "express";
+import { asyncQuery } from "@/database";
+import { User } from "@/types/database";
+import { isJwtNavigatorUser } from "@/types/express";
 
-const SECRET_KEY = process.env.SECRET_KEY
-const SUPERUSER_KEY = process.env.SUPERUSER_ADMIN_TOKEN
+const SECRET_KEY = process.env.SECRET_KEY;
+const SUPERUSER_KEY = process.env.SUPERUSER_ADMIN_TOKEN;
 const DEMO_USER_ENABLED = process.env.ENABLE_DEMO_USER || false;
 
 /**
@@ -18,52 +18,78 @@ const DEMO_USER_ENABLED = process.env.ENABLE_DEMO_USER || false;
  * @param {NextFunction} next - The callback to pass control to the next middleware.
  * @return {Promise<void>} Does not return a value but modifies the `req` object or sends an HTTP response.
  */
-export async function isAuthenticated(req: Request, res: Response, next: NextFunction): Promise<void> {
-    if (req.headers.authorization === undefined) {
-        res.status(401).json({message: 'Unauthorized'});
-        return;
+export async function isAuthenticated(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (req.headers.authorization === undefined) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  if (
+    req.headers.authorization === SUPERUSER_KEY &&
+    req.headers.authorization !== undefined &&
+    req.headers.authorization.length > 0
+  ) {
+    req.user = {
+      discord_id: SUPERUSER_KEY,
+      role: PermissionRole.APEX,
+    };
+    next();
+    return;
+  }
+  const token = req.headers.authorization.split(" ")[1];
+  verify(token, SECRET_KEY, async (err, user) => {
+    if (err) {
+      res.status(401).json({ message: "Unauthorized", error: err.message });
+      return;
     }
-    if(req.headers.authorization === SUPERUSER_KEY && req.headers.authorization !== undefined && req.headers.authorization.length > 0) {
-        req.user = {
-            discord_id: SUPERUSER_KEY,
-            role: PermissionRole.APEX,
-        }
-        next();
+    if (
+      typeof user !== "string" &&
+      user !== undefined &&
+      isJwtNavigatorUser(user)
+    ) {
+      if (!DEMO_USER_ENABLED && user.discord_id === "demo_user") {
+        // Demo JWT was granted, but the account was later disabled - interpret this as a rejection
+        res
+          .status(401)
+          .json({ message: "Unauthorized", error: "Demo user was disabled" });
         return;
-    }
-    const token = req.headers.authorization.split(' ')[1];
-    verify(token, SECRET_KEY, async (err, user) => {
-        if (err) {
-            res.status(401).json({message: 'Unauthorized', error: err.message});
-            return;
-        }
-        if (typeof user !== 'string' && user !== undefined && isJwtNavigatorUser(user)) {
-            if (!DEMO_USER_ENABLED && user.discord_id === 'demo_user') {
-                // Demo JWT was granted, but the account was later disabled - interpret this as a rejection
-                res.status(401).json({message: 'Unauthorized', error: 'Demo user was disabled'});
-                return;
-            }
-            // Reject access if the permission role is 0 / NONE
-            if (await getPermissionRole(user.discord_id) === PermissionRole.NONE) {
-                res.status(403).json({message: 'Forbidden', error: 'User is disabled', error_code: 'USER_DISABLED'});
-                return;
-            }
-            req.user = user;
-        } else {
-            // This shouldn't happen unless someone has tampered with their token?
-            console.error("Invalid user type: " + typeof user + " " + user)
-            res.status(401).json({message: 'Unauthorized', error: "Malformed token!"}); // Treat as effectively unauthenticated
-        }
-        next();
-    });
-}
-
-export async function isArtificer(req: Request, res: Response, next: NextFunction): Promise<void> {
-    if(await getPermissionRole(req.user?.discord_id) < PermissionRole.ARTIFICER) {
-        res.status(401).json({message: 'Unauthorized'});
+      }
+      // Reject access if the permission role is 0 / NONE
+      if ((await getPermissionRole(user.discord_id)) === PermissionRole.NONE) {
+        res.status(403).json({
+          message: "Forbidden",
+          error: "User is disabled",
+          error_code: "USER_DISABLED",
+        });
         return;
+      }
+      req.user = user;
+    } else {
+      // This shouldn't happen unless someone has tampered with their token?
+      console.error("Invalid user type: " + typeof user + " " + user);
+      res
+        .status(401)
+        .json({ message: "Unauthorized", error: "Malformed token!" }); // Treat as effectively unauthenticated
     }
     next();
+  });
+}
+
+export async function isArtificer(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (
+    (await getPermissionRole(req.user?.discord_id)) < PermissionRole.ARTIFICER
+  ) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+  next();
 }
 
 /**
@@ -74,13 +100,19 @@ export async function isArtificer(req: Request, res: Response, next: NextFunctio
  * @param {NextFunction} next - The next middleware function in the request-response cycle.
  * @return {Promise<void>} Resolves to void if the user is authorized, otherwise sends an unauthorized response.
  */
-export async function isAdministrator(req: Request, res: Response, next: NextFunction): Promise<void> {
-    if(await getPermissionRole(req.user?.discord_id) < PermissionRole.ARCHITECT) {
-        res.status(401).json({message: 'Unauthorized'});
-        return;
-    }
+export async function isAdministrator(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  if (
+    (await getPermissionRole(req.user?.discord_id)) < PermissionRole.ARCHITECT
+  ) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 
-    next();
+  next();
 }
 
 /**
@@ -91,9 +123,12 @@ export async function isAdministrator(req: Request, res: Response, next: NextFun
  * @return {Promise<boolean>} A promise that resolves to true if the user has existing data, otherwise false.
  */
 export async function hasExistingData(userId: string): Promise<boolean> {
-    // Check `images` table in database to see if the user id owns any images (limit by 1), return true if so
-    let results = await asyncQuery(`SELECT * FROM images WHERE owner_id = ? LIMIT 1`, [userId])
-    return results.length > 0;
+  // Check `images` table in database to see if the user id owns any images (limit by 1), return true if so
+  let results = await asyncQuery(
+    `SELECT * FROM images WHERE owner_id = ? LIMIT 1`,
+    [userId],
+  );
+  return results.length > 0;
 }
 
 /**
@@ -107,35 +142,44 @@ export async function hasExistingData(userId: string): Promise<boolean> {
  * @param {string} userId - The unique identifier of the user whose role is to be retrieved.
  * @return {Promise<PermissionRole>} A promise that resolves to the user's permission role. If the user does not exist and has no existing data, it resolves to `PermissionRole.NONE`.
  */
-export async function getPermissionRole(userId?: string): Promise<PermissionRole> {
-    if(userId === undefined) {
-        return PermissionRole.NONE;
-    }
+export async function getPermissionRole(
+  userId?: string,
+): Promise<PermissionRole> {
+  if (userId === undefined) {
+    return PermissionRole.NONE;
+  }
 
-    if(userId === SUPERUSER_KEY) {
-        return PermissionRole.APEX;
-    }
+  if (userId === SUPERUSER_KEY) {
+    return PermissionRole.APEX;
+  }
 
-    if(userId === 'demo_user') {
-        if(DEMO_USER_ENABLED) {
-            return PermissionRole.ARTIFICER;
-        } else {
-            return PermissionRole.NONE; // Demo user was likely disabled, treat as unauthenticated/disabled
-        }
-    }
-
-    const users = await asyncQuery(`SELECT * FROM users WHERE id = ?`, [userId]) as Array<User>;
-    if(users.length === 0) {
-        if(await hasExistingData(userId)) {
-            await asyncQuery(`INSERT INTO users (id, role) VALUES (?, ?)`, [userId, PermissionRole.APPRENTICE])
-            console.log(`[Authentication] Created new user with ID ${userId} and role ${PermissionRole.APPRENTICE} (had existing image data)`)
-            return PermissionRole.APPRENTICE;
-        } else {
-            return PermissionRole.NONE;
-        }
+  if (userId === "demo_user") {
+    if (DEMO_USER_ENABLED) {
+      return PermissionRole.ARTIFICER;
     } else {
-        return users[0].role
+      return PermissionRole.NONE; // Demo user was likely disabled, treat as unauthenticated/disabled
     }
+  }
+
+  const users = (await asyncQuery(`SELECT * FROM users WHERE id = ?`, [
+    userId,
+  ])) as Array<User>;
+  if (users.length === 0) {
+    if (await hasExistingData(userId)) {
+      await asyncQuery(`INSERT INTO users (id, role) VALUES (?, ?)`, [
+        userId,
+        PermissionRole.APPRENTICE,
+      ]);
+      console.log(
+        `[Authentication] Created new user with ID ${userId} and role ${PermissionRole.APPRENTICE} (had existing image data)`,
+      );
+      return PermissionRole.APPRENTICE;
+    } else {
+      return PermissionRole.NONE;
+    }
+  } else {
+    return users[0].role;
+  }
 }
 
 /**
@@ -147,17 +191,25 @@ export async function getPermissionRole(userId?: string): Promise<PermissionRole
  * @param {PermissionRole} role - The role to be assigned to the user.
  * @return {Promise<void>} A promise that resolves when the operation is completed.
  */
-export async function setPermissionRole(userId: string, role: PermissionRole): Promise<void> {
-    if(await isUsersTableEmpty()) {
-        console.warn(`First user (ID: ${userId}) to authenticate! Setting role to APEX (Superuser)`)
-        role = PermissionRole.APEX
-    }
-    if(userId === 'demo_user') {
-        // The demo account cannot have the permission role changed
-        return
-    }
-    await asyncQuery(`INSERT INTO users (id, role) VALUES (?, ?) ON DUPLICATE KEY UPDATE role = ?`, [userId, role, role])
-    return
+export async function setPermissionRole(
+  userId: string,
+  role: PermissionRole,
+): Promise<void> {
+  if (await isUsersTableEmpty()) {
+    console.warn(
+      `First user (ID: ${userId}) to authenticate! Setting role to APEX (Superuser)`,
+    );
+    role = PermissionRole.APEX;
+  }
+  if (userId === "demo_user") {
+    // The demo account cannot have the permission role changed
+    return;
+  }
+  await asyncQuery(
+    `INSERT INTO users (id, role) VALUES (?, ?) ON DUPLICATE KEY UPDATE role = ?`,
+    [userId, role, role],
+  );
+  return;
 }
 
 /**
@@ -168,8 +220,8 @@ export async function setPermissionRole(userId: string, role: PermissionRole): P
  * @return {Promise<boolean>} A promise that resolves to `true` if the "users" table is empty, or `false` otherwise.
  */
 export async function isUsersTableEmpty(): Promise<boolean> {
-    let results = await asyncQuery(`SELECT id FROM users WHERE role > 0 LIMIT 1`)
-    return results.length === 0
+  let results = await asyncQuery(`SELECT id FROM users WHERE role > 0 LIMIT 1`);
+  return results.length === 0;
 }
 
 /**
@@ -185,9 +237,9 @@ export async function isUsersTableEmpty(): Promise<boolean> {
  * APEX: Represents the superuser role with the highest level of access and permissions.
  */
 export enum PermissionRole {
-    NONE = 0,      // Unauthenticated (or disabled)
-    APPRENTICE = 1,// "Standard" / default role
-    ARTIFICER = 2, // Elevated permissions role (such as triggering model downloads)
-    ARCHITECT = 3, // Administrator role
-    APEX = 4       // Superuser role
+  NONE = 0, // Unauthenticated (or disabled)
+  APPRENTICE = 1, // "Standard" / default role
+  ARTIFICER = 2, // Elevated permissions role (such as triggering model downloads)
+  ARCHITECT = 3, // Administrator role
+  APEX = 4, // Superuser role
 }

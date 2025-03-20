@@ -1,5 +1,5 @@
-const router = require('express').Router();
-const db = require('../database').getConnectionPool();
+const router = require("express").Router();
+const db = require("../database").getConnectionPool();
 
 const EMBED_HTML_TEMPLATE = `
 <!DOCTYPE html>
@@ -46,26 +46,29 @@ const EMBED_HTML_TEMPLATE = `
     </div>
 </body>
 </html>
-`
+`;
 
-router.get('/embed/:jobId', async (req, res) => {
-    const jobId = req.params.jobId;
-    db.query('SELECT * FROM images WHERE id = ?', [jobId], (err, rows) => {
-        if (err) {
-            res.status(500).json({ message: 'Internal Server Error' });
-            console.error(err);
-        } else if (rows.length === 0) {
-            res.status(404).json({ message: 'Job not found' });
-        } else {
-            const job = rows[0];
-            let html = EMBED_HTML_TEMPLATE;
-            html = html.replace(/%title%/g, "BitJourney Job");
-            html = html.replace(/%description%/g, "Served by BitJourney Navigator");
-            // We enforce https for the image URL, as Discord requires it.
-            html = html.replace(/%JOB_IMAGE_URL%/g, `https://${req.headers.host}/api/images/${jobId}`);
-            res.send(html);
-        }
-    });
+router.get("/embed/:jobId", async (req, res) => {
+  const jobId = req.params.jobId;
+  db.query("SELECT * FROM images WHERE id = ?", [jobId], (err, rows) => {
+    if (err) {
+      res.status(500).json({ message: "Internal Server Error" });
+      console.error(err);
+    } else if (rows.length === 0) {
+      res.status(404).json({ message: "Job not found" });
+    } else {
+      const job = rows[0];
+      let html = EMBED_HTML_TEMPLATE;
+      html = html.replace(/%title%/g, "BitJourney Job");
+      html = html.replace(/%description%/g, "Served by BitJourney Navigator");
+      // We enforce https for the image URL, as Discord requires it.
+      html = html.replace(
+        /%JOB_IMAGE_URL%/g,
+        `https://${req.headers.host}/api/images/${jobId}`,
+      );
+      res.send(html);
+    }
+  });
 });
 
 module.exports = router;
