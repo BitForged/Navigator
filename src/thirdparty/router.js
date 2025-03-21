@@ -1,8 +1,8 @@
 import { CivitAi } from "./civitai";
 import {
-  getAvailableStorage,
-  downloadFileToPath,
   doesFileExist,
+  downloadFileToPath,
+  getAvailableStorage,
 } from "@/storage";
 import { Router } from "express";
 import { isArtificer, isAuthenticated } from "@/security";
@@ -10,6 +10,7 @@ import axios from "axios";
 import { getFolderPathForModelType } from "@/types/thirdparty/civitai";
 import path from "node:path";
 import * as constants from "@/constants";
+import { emitToAll } from "@/processing/socketManager";
 
 const civitai = new CivitAi();
 export const thirdPartyRouter = new Router();
@@ -138,6 +139,13 @@ thirdPartyRouter.get(
 
       console.log(
         "Successfully requested refresh of models from Forge backend",
+      );
+      // Advise websocket clients that the available models have changed
+      emitToAll(
+        "models-refreshed",
+        JSON.stringify({
+          message: "Models refreshed by CivitAI download",
+        }),
       );
     } catch (e) {
       console.error(e);
