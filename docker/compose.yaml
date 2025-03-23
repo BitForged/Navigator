@@ -1,0 +1,37 @@
+services:
+  navigator:
+    image: ghcr.io/bitforged/navigator:main
+    # Uncomment the below (and comment out the image line above) to build your own container image
+    #build:
+    #  context: ../.
+    volumes:
+      - ./navigator/navigator_env:/app/.env
+    ports:
+      - "127.0.0.1:3333:3333" # REST API port (`HTTP_API_PORT`)
+      - "127.0.0.1:3334:3334" # WebSocket/socket.io API Port (`RT_API_PORT`)
+  compass:
+    image: ghcr.io/bitforged/compass:main
+    environment:
+      - COMPASS_APP_API_BASE=
+      - COMPASS_APP_RT_API_BASE=
+      - COMPASS_APP_BASE_URL=
+      - COMPASS_APP_DISCORD_CLIENT_ID=
+      - COMPASS_APP_DISCORD_REDIRECT_URI=
+    ports:
+      - "127.0.0.1:8888:80"
+  db:
+    image: mariadb:latest
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: P@SSW0RD
+      MYSQL_DATABASE: navigator
+      MYSQL_USER: navigator
+      MYSQL_PASSWORD: navigator
+    volumes:
+      - ./db_data:/var/lib/mysql
+    ports:
+      # Do NOT unbind this from localhost unless you understand the security implications associated with doing so.
+      # If your question is "what security implications?" then you (probably) don't understand them.
+      # You've officially been warned.
+      # For even more security, completely remove this port mapping, then update Navigator's `DB_HOST` to point to the `db` hostname.
+      - "127.0.0.1:3306:3306"

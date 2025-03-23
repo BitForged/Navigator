@@ -111,6 +111,24 @@ variables if you prefer (such as for Docker).
 Note that you should check `.env.example` for updates whenever you update Navigator, as Navigator won't attempt to write
 new entries to the file (though it tries to keep reasonable behavior when its undefined).
 
+### Docker
+
+For convenience, there is also a Docker image built by GitHub Actions that you can use along with the Compass image for
+easily getting up and running. Copy the included `./docker/compose.yaml` to a directory of your choice, then update the
+`./navigator/navigator_env:/app/.env` line to point to where you've copied Navigator's `.env.example` file to.
+
+The MariaDB and Compass images are not required — though if you choose not to use the MariaDB container, you'll still
+need to provide your own MySQL/MariaDB database.
+
+For further documentation on the environmental variables for Compass,
+see [the Compass repository](https://github.com/BitForged/Compass).
+
+It is highly recommended (though not required) you serve both Navigator and Compass over a reverse proxy of your choice,
+especially for TLS connections. Ensure that your reverse proxy supports WebSocket-based connections.
+
+You will also still need an instance of Forge as mentioned above, along with any required patches, to act as the backend
+for Navigator.
+
 ## Running
 
 ```bash
