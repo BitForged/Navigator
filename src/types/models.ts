@@ -339,7 +339,8 @@ async function getFileSha256(
   console.log(
     `Non-cached entry. Calculating SHA256 for file: ${fileName} (${filePath})`,
   );
-  let output = child_process.execSync("sha256sum " + filePath);
+  const sha256Cmd = `sha256sum "${filePath}"`;
+  let output = child_process.execSync(sha256Cmd);
   let sha256 = output.toString().split(" ")[0];
   // Update the cache so that we can just read it from the cache next time
   await asyncQuery(
