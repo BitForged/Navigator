@@ -265,7 +265,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     status: "queued",
     origin: requestIP,
     categoryId,
-    image_enhancements: image_enhancements !== undefined || false,
+    image_enhancements: image_enhancements || false,
   };
 
   if (subseed && subseed_strength) {
