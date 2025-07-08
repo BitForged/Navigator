@@ -34,16 +34,20 @@ export class CivitAi {
    * @return {Promise<boolean>} Returns a promise that resolves to true if the response status is 200, indicating successful authentication, otherwise false.
    */
   async isAuthenticated(): Promise<boolean> {
-    let resp = await axios.get(
-      `${this.getEndpoint("models")}?hidden=1&limit=1`,
-      {
-        headers: {
-          Authorization: "Bearer " + this.apiKey || "",
+    try {
+      let resp = await axios.get(
+        `${this.getEndpoint("models")}?hidden=1&limit=1`,
+        {
+          headers: {
+            Authorization: "Bearer " + this.apiKey || "",
+          },
         },
-      },
-    );
-
-    return resp.status === 200;
+      );
+      return resp.status === 200;
+    } catch (err) {
+      console.error(`Failed to check CivitAI for authentication: ${err}`);
+      return false;
+    }
   }
 
   /**
