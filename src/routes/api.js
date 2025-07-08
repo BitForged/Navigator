@@ -235,11 +235,26 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
   const requestIP = req.ip;
 
   let validatedSchedulerName;
+  console.log(`Attempting to validate scheduler name: ${scheduler_name}`);
   if (scheduler_name === undefined || scheduler_name === null) {
     // Fall back to the "Automatic" scheduler if none was supplied
     validatedSchedulerName = "automatic";
+    console.error(
+      `Null/undefined scheduler name found, falling back to 'automatic'`,
+    );
   } else {
     validatedSchedulerName = await validateSchedulerName(scheduler_name);
+    if (validatedSchedulerName !== scheduler_name) {
+      console.log(
+        `Warn: Provided scheduler name ${scheduler_name} did not match the validated scheduler name of ${validatedSchedulerName} - retrying with lowercase name`,
+      );
+      validatedSchedulerName = await validateSchedulerName(
+        scheduler_name.toLowerCase(),
+      );
+    }
+    console.log(
+      `Validated scheduler name: ${scheduler_name} => ${validatedSchedulerName}`,
+    );
   }
 
   // TODO: Check if model_name is valid
