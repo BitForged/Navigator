@@ -162,6 +162,7 @@ async function checkForProgressAndEmit(task) {
  * @param {number} task.width - The desired width of the generated image.
  * @param {number} task.height - The desired height of the generated image.
  * @param {number} task.cfg_scale - The guidance scale parameter for balancing prompt adherence and creativity.
+ * @param {number} task.distilled_cfg - Similar to CFG Scale, but for more advanced usage.
  * @param {string} task.sampler_name - The name of the sampling method to use for generation.
  * @param {string} [task.scheduler_name] - The name of the scheduler, if applicable.
  * @param {string} [task.upscaler_name] - The name of the upscaler to use for high-resolution processing.
@@ -176,6 +177,7 @@ async function checkForProgressAndEmit(task) {
  * @param {string|undefined} [task.first_pass_image] - An optional image (in base64) used for the base image of processing high-resolution upscaling
  * (so that the backend doesn't have to regenerate the base image).
  * @param {string} task.origin - The origin identifier for client-server communication.
+ * @param {string[]} task.modules - Any additional modules to be loaded by Forge for this request.
  *
  * @return {Promise<void>} Resolves when the task is complete and the generated image is saved or an error is emitted.
  */
@@ -214,12 +216,12 @@ async function processTxt2ImgTask(task) {
       width: task.width,
       height: task.height,
       cfg_scale: task.cfg_scale,
+      distilled_cfg_scale: task.distilled_cfg || 3.5,
       sampler_name: task.sampler_name,
       scheduler: task.scheduler_name,
       enable_hr: false,
       hr_upscaler: task.upscaler_name,
-      // FIXME: The below was needed for Forge, but recently fixed. Eventually this can be removed.
-      hr_additional_modules: [],
+      hr_additional_modules: task.modules || [],
       save_images: false,
       override_settings: {
         sd_model_checkpoint: task.model_name,
@@ -233,6 +235,14 @@ async function processTxt2ImgTask(task) {
 
     if (task.denoising_strength && task.denoising_strength !== 0.0) {
       queuedTask.denoising_strength = task.denoising_strength;
+    }
+
+    if (task.modules && task.modules.length > 0) {
+      // Ensure we load any extra modules that might be needed for this request
+      // Examples are VAE, TextEncoders, CLIP, etc
+      queuedTask.override_settings.forge_additional_modules = task.modules;
+    } else {
+      queuedTask.override_settings.forge_additional_modules = []; // Reset to empty
     }
 
     if (task.force_hr_fix === true) {
@@ -330,7 +340,7 @@ async function processTxt2ImgTask(task) {
             task.seed = jobInfo.seed;
           }
           try {
-            await writeImageToDB(task.job_id, response.data.images[0]);
+            await writeImageToDB(task.job_id, response.data.images[0], task);
             task.status = "finished";
             emitToSocketsByIp(task.origin, "task-finished", {
               ...cleanseTask(task),
@@ -457,7 +467,7 @@ async function processImg2ImgTask(task) {
  * @param {Buffer|string} image - The image data to be stored in the database. Cannot be null or undefined.
  * @return {Promise<void>} A promise that resolves when the operation is successful or rejects with an error message.
  */
-async function writeImageToDB(jobId, image) {
+async function writeImageToDB(jobId, image, params) {
   return new Promise((resolve, reject) => {
     if (image === null || image === undefined) {
       console.error("Image is null or undefined!");
@@ -500,6 +510,9 @@ async function writeImageToDB(jobId, image) {
                 if (response.data !== undefined && response.data !== null) {
                   let info = response.data;
                   info.parameters.owner_id = owner_id;
+                  if (params.distilled_cfg) {
+                    info.parameters.distilled_cfg = params.distilled_cfg;
+                  }
                   // Base 64 encode the JSON data so we can save it back to the database
                   info = Buffer.from(JSON.stringify(info)).toString("base64");
                   db.execute(

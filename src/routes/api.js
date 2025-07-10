@@ -99,7 +99,7 @@ router.get("/upscalers", async (req, res) => {
       res.json(upscalers);
     })
     .catch((error) => {
-      res.json({ error: error.message });
+      res.status(500).json({ error: error.message });
     });
 });
 
@@ -110,7 +110,18 @@ router.get("/schedulers", async (req, res) => {
       res.json(response.data);
     })
     .catch((error) => {
-      res.json({ error: error.message });
+      res.status(500).json({ error: error.message });
+    });
+});
+
+router.get("/modules", async (req, res) => {
+  axios
+    .get(`${constants.SD_API_HOST}/sd-modules`)
+    .then((response) => {
+      res.json(response.data);
+    })
+    .catch((error) => {
+      res.status(500).json({ error: error.message });
     });
 });
 
@@ -133,6 +144,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
        - force_hr_fix (optional, default to false)
        - upscaler_name (optional, will check if "4x_NMKD-Siax_200k" exists - if not, fall back to a built-in ("RealESRGAN_x4"))
        - image_enhancements (optional, set to any value to activate, will enable FreeU and SAG via Forge if activated)
+       - modules (optional, but needed for advanced model types like Flux and Chroma)
      */
 
   if (taskData === undefined) {
@@ -147,6 +159,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
       hrf_steps,
       seed,
       cfg_scale,
+      distilled_cfg,
       sampler_name,
       scheduler_name,
       denoising_strength,
@@ -156,6 +169,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
       categoryId,
       upscaler_name,
       image_enhancements,
+      modules,
     } = req.body;
     taskData = {
       model_name,
@@ -168,6 +182,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
       hrf_steps,
       seed,
       cfg_scale,
+      distilled_cfg,
       sampler_name,
       scheduler_name,
       denoising_strength,
@@ -177,6 +192,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
       categoryId,
       upscaler_name,
       image_enhancements,
+      modules,
     };
   }
 
@@ -191,6 +207,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     hrf_steps,
     seed,
     cfg_scale,
+    distilled_cfg,
     sampler_name,
     scheduler_name,
     denoising_strength,
@@ -200,6 +217,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     categoryId,
     upscaler_name,
     image_enhancements,
+    modules,
   } = taskData;
   if (!model_name || !prompt || !owner_id) {
     res.status(400).json({ error: "Missing required parameters" });
@@ -271,6 +289,7 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     hrf_steps: hrf_steps || steps,
     seed: seed || -1,
     cfg_scale: cfg_scale || 7,
+    distilled_cfg: distilled_cfg || 3.5,
     sampler_name: sampler_name || "DPM++ 2M",
     scheduler_name: validatedSchedulerName,
     denoising_strength: denoising_strength || 0.0,
@@ -308,6 +327,10 @@ async function queueTxt2ImgRequest(req, res, owner_id, taskData = undefined) {
     if (validatedUpscalerName) {
       job.upscaler_name = validatedUpscalerName;
     }
+  }
+
+  if (modules !== undefined && modules.length > 0) {
+    job.modules = modules;
   }
 
   let error = await createImageJobInDB(job);
@@ -570,6 +593,22 @@ function parseModelNameFromInfo(info) {
   }
 }
 
+/**
+ * Returns a list of Forge modules given a speciefied info text string
+ * @param {string} info - Represents the "info" text string from Forge
+ * @returns {string[]} Any found modules, concatenated into an array with `.safetensors` appended to the end of each element.
+ */
+function parseModulesFromInfo(info) {
+  // Example: "... Model hash: e6da438d1a, Model: my-fancy-model, Version: f2.0.1v1.10.1-previous-669-gdfdcbab6, Module 1: ae, Module 2: t5xxl_fp8_e4m3fn_scaled"
+  // This regex finds all keys starting with "Module", and captures the value after the colon.
+  const moduleRegex = /Module \d+:\s*([^,]+)/g;
+  // For each match, we take the first captured group (the value).
+  return Array.from(
+    info.matchAll(moduleRegex),
+    (match) => `${match[1]}.safetensors`,
+  );
+}
+
 function getImageParams(jobId) {
   return new Promise((resolve, reject) => {
     db.query(
@@ -606,8 +645,10 @@ function getImageParams(jobId) {
               height: info.parameters["Size-2"],
               seed: info.parameters["Seed"],
               cfg_scale: info.parameters["CFG scale"],
+              distilled_cfg: info.parameters.distilled_cfg || 3.5,
               steps: info.parameters["Steps"],
               model_name: parseModelNameFromInfo(info.info),
+              modules: parseModulesFromInfo(info.info),
               prompt: info.parameters["Prompt"],
               negative_prompt: info.parameters["Negative prompt"],
               sampler_name: info.parameters["Sampler"],
@@ -687,6 +728,8 @@ router.post(
           force_hr_fix: true,
           categoryId: newCategoryId,
           image_enhancements: params.image_enhancements || false,
+          distilled_cfg: params.distilled_cfg,
+          modules: params.modules || [],
         };
 
         if (
