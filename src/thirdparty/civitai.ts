@@ -134,7 +134,9 @@ export class CivitAi {
           },
         },
       );
-      delete resp.data.images;
+      // Keep only the first image, can be displayed by downstream clients
+      // TODO: Locally cache the first image in case it disappears from the API
+      resp.data.images = resp.data.images?.slice(0, 1);
       // Update metadata cache in database
       const modelVersionId = resp.data.id;
       if (modelVersionId === undefined || modelVersionId === null) {
@@ -174,7 +176,9 @@ export class CivitAi {
           },
         },
       );
-      delete resp.data.images;
+      // Keep only the first image, can be displayed by downstream clients
+      // TODO: Locally cache the first image in case it disappears from the API
+      resp.data.images = resp.data.images?.slice(0, 1);
       // Update metadata cache in database
       const modelVersionId = resp.data.id;
       if (modelVersionId === undefined || modelVersionId === null) {
