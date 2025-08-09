@@ -1,5 +1,6 @@
 import { Request, Response, Router } from "express";
-import { isAdministrator, isAuthenticated } from "@/security";
+import queryBoolean from "express-query-boolean";
+import { getPermissionRole, isAdministrator, isAuthenticated, PermissionRole } from "@/security";
 import { getLorasFromForge } from "@/thirdparty/forge";
 import { ForgeLora } from "@/types/thirdparty/forge";
 import {
@@ -16,11 +17,13 @@ export const modelRouter = Router();
 
 interface LorasRequestQuery {
   forge_only: boolean;
+  force_update_metadata: boolean;
 }
 
 modelRouter.get(
   "/loras",
   isAuthenticated,
+  queryBoolean(),
   // @ts-ignore
   async (
     req: Request<RequestParams, ResponseBody, RequestBody, LorasRequestQuery>,
@@ -29,12 +32,21 @@ modelRouter.get(
     const loras: ForgeLora[] = await getLorasFromForge();
     const mergedLoras: NavigatorLora[] = [];
     const unmatchedLoras: ForgeLora[] = [];
+    let shouldForceUpdate = false;
+    if (req.query.force_update_metadata) {
+      if (await getPermissionRole(req.user?.discord_id) < PermissionRole.ARTIFICER) {
+        res.status(403).json({ error: "You are not authorized to force refresh metadata." });
+        return;
+      } else {
+        shouldForceUpdate = true;
+      }
+    }
     if (req.query.forge_only) {
       res.json(loras);
       return;
     }
     for (const lora of loras) {
-      const match = await getLoraMetadata(lora);
+      const match = await getLoraMetadata(lora, shouldForceUpdate);
       if (match === undefined) {
         unmatchedLoras.push(lora);
         continue;

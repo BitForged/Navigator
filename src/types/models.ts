@@ -71,12 +71,17 @@ export function convertCivitaiAndForgeToNavigatorLora(
  * It will check to see if there is metadata cached in the
  *  database, which will also determine what provider the metadata comes from.
  * @param lora The internal Forge representation of this LoRA (will be used to match against the database).
+ * @param forceUpdateMetadata If true, will force an update of the metadata from upstream (if possible).
  */
 export async function getLoraMetadata(
   lora: ForgeLora,
+  forceUpdateMetadata: boolean = false
 ): Promise<NavigatorLora | undefined> {
   let hash = "";
   const civitai = new CivitAi();
+  if (forceUpdateMetadata) {
+    console.log("Forcing update of metadata for lora: ", lora.name);
+  }
 
   if (!lora.metadata?.sshs_model_hash) {
     // The metadata is needed to grab the hash of the model, which is what gets stored against the database.
@@ -142,10 +147,7 @@ export async function getLoraMetadata(
     const CACHE_VALID_RANGE = 1000 * 60 * 60 * 24 * 7;
     if (metadata.metadata_provider === ModelMetadataProvider.CIVITAI) {
       let metadataObj = JSON.parse(metadata.metadata_cache);
-      if (
-        metadata.metadata_updated_at.getTime() >
-        Date.now() - CACHE_VALID_RANGE
-      ) {
+      if ((metadata.metadata_updated_at.getTime() > Date.now() - CACHE_VALID_RANGE) && !forceUpdateMetadata) {
         // Cache is still fine, return this data
         if (isCivitAiModelVersion(metadataObj)) {
           // console.debug(
