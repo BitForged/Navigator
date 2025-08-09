@@ -1,7 +1,0 @@
-# Ignore artifacts and other non-src dirs:
-dist
-node_modules
-forge_patches
-
-# Ignore config files
-tsconfig.json

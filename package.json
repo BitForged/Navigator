@@ -6,8 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
     "start": "node --env-file=.env dist/index.js",
-    "build-run": "tsc && node --env-file=.env dist/index.js",
-    "prepare": "husky install"
+    "build-run": "tsc && node --env-file=.env dist/index.js"
   },
   "author": "Russell Richardson <russjr08>",
   "license": "ISC",
@@ -16,7 +15,7 @@
     "@": "dist/"
   },
   "dependencies": {
-    "axios": "^1.8.1",
+    "axios": "1.11.0",
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.2",
     "module-alias": "^2.2.3",
@@ -30,13 +29,8 @@
     "@types/node": "^22.13.5",
     "@types/socket.io": "^3.0.1",
     "@types/uuid": "^10.0.0",
-    "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
-    "prettier": "3.5.3",
     "source-map-support": "^0.5.21",
     "typescript": "^5.7.3"
-  },
-  "lint-staged": {
-    "*.{js,ts,css,md}": "prettier --write"
   }
 }
