@@ -1,8 +1,5 @@
 import { ForgeLora } from "@/types/thirdparty/forge";
-import {
-  CivitAiModelVersion,
-  isCivitAiModelVersion,
-} from "@/types/thirdparty/civitai";
+import { CivitAiModelVersion, isCivitAiModelVersion } from "@/types/thirdparty/civitai";
 import { ModelMetadataProvider, ModelType } from "@/types/enums";
 import path from "node:path";
 import fs from "node:fs";
@@ -53,7 +50,7 @@ export interface NavigatorLora {
 
 export function convertCivitaiAndForgeToNavigatorLora(
   civitai: CivitAiModelVersion,
-  forge: ForgeLora,
+  forge: ForgeLora
 ): NavigatorLora {
   return {
     forge,
@@ -61,7 +58,7 @@ export function convertCivitaiAndForgeToNavigatorLora(
     alias: forge.alias,
     name: civitai.name,
     nsfw: civitai.model.nsfw,
-    provider: ModelMetadataProvider.CIVITAI,
+    provider: ModelMetadataProvider.CIVITAI
   };
 }
 
@@ -93,12 +90,12 @@ export async function getLoraMetadata(
       // Get the path to the model
       console.log(
         "Attempting to manually get SHA256 hash for lora: ",
-        lora.name,
+        lora.name
       );
       let loraPath = path.resolve(
         process.env.MODEL_DIR,
         "./Lora",
-        lora.name + ".safetensors",
+        lora.name + ".safetensors"
       );
       try {
         loraPath = fs.realpathSync(loraPath);
@@ -107,16 +104,16 @@ export async function getLoraMetadata(
           "Got manual SHA256 hash for lora: ",
           lora.name,
           " -> ",
-          hash,
+          hash
         );
       } catch (e) {
         console.error(
           "Failed to manually calculate SHA256 hash for lora: ",
-          lora.name,
+          lora.name
         );
         console.error(e);
         console.warn(
-          `Falling back to using alias as the hash for lora: ${lora.name} (Alias: ${lora.alias})`,
+          `Falling back to using alias as the hash for lora: ${lora.name} (Alias: ${lora.alias})`
         );
         hash = lora.alias;
       }
@@ -124,13 +121,13 @@ export async function getLoraMetadata(
       // Can't fall back to calculating the SHA256 hash manually, since we don't know where the model is.
       console.warn(
         "No model directory set, cannot calculate SHA256 hash for lora - falling back to alias as the hash: ",
-        lora.name,
+        lora.name
       );
       console.warn(
         "If this is intended, please be sure to register a local override using the alias as the hash. Name: ",
         lora.name,
         " -> ",
-        lora.alias,
+        lora.alias
       );
       hash = lora.alias;
     }
@@ -157,26 +154,26 @@ export async function getLoraMetadata(
         }
         console.warn(
           `Invalid metadata found in database for ${lora.name} - attempting to update again from CivitAI: `,
-          metadataObj,
+          metadataObj
         );
       }
       if (metadata.updates_disabled) {
         console.warn(
-          `Model ${lora.name} is disabled for updates (and last updated > 7 days ago), returning current cached data.`,
+          `Model ${lora.name} is disabled for updates (and last updated > 7 days ago), returning current cached data.`
         );
         if (isCivitAiModelVersion(metadataObj)) {
           return convertCivitaiAndForgeToNavigatorLora(metadataObj, lora);
         } else {
           console.error(
             "Invalid metadata found in database (updates disabled, cannot resolve): ",
-            metadataObj,
+            metadataObj
           );
           return undefined;
         }
       }
       if (!(await civitai.isAuthenticated())) {
         console.error(
-          "Not authenticated and and therefore unable to fetch model version (not in cache)!",
+          "Not authenticated and and therefore unable to fetch model version (not in cache)!"
         );
         return;
       }
@@ -200,7 +197,7 @@ export async function getLoraMetadata(
         }
       } catch (e) {
         console.warn(
-          `[Cache Update Failed] No matching model on CivitAI found for ${lora.name} (${hash}) - was it taken down?`,
+          `[Cache Update Failed] No matching model on CivitAI found for ${lora.name} (${hash}) - was it taken down?`
         );
         // Return the cached data just in case it got pulled from CivitAI this isn't necessarily fatal since
         //  we already have a copy of the data anyway.
@@ -215,11 +212,11 @@ export async function getLoraMetadata(
           alias: lora.alias,
           name: lora.name,
           nsfw: obj.nsfw || false,
-          provider: ModelMetadataProvider.LOCAL,
+          provider: ModelMetadataProvider.LOCAL
         };
       } else {
         console.error(
-          `Lora ${lora.name}'s metadata provider is marked as LOCAL, but the metadata is invalid!`,
+          `Lora ${lora.name}'s metadata provider is marked as LOCAL, but the metadata is invalid!`
         );
         return undefined;
       }
@@ -228,7 +225,7 @@ export async function getLoraMetadata(
     // We don't currently have any metadata for the LoRA, try to get it from CivitAI using the hash
     try {
       console.log(
-        `No metadata found for lora ${lora.name} (${hash}), attempting to fetch from CivitAI...`,
+        `No metadata found for lora ${lora.name} (${hash}), attempting to fetch from CivitAI...`
       );
       let resp = await civitai.getModelVersionByHash(hash);
       if (resp !== undefined) {
@@ -240,18 +237,18 @@ export async function getLoraMetadata(
           metadata_provider: ModelMetadataProvider.CIVITAI,
           metadata_id: Number.parseInt(resp.id),
           metadata_updated_at: new Date(),
-          updates_disabled: false,
+          updates_disabled: false
         };
         await setModelMetadata(hash, updatedMetadata);
         console.log(
-          `Successfully fetched metadata for lora ${lora.name} (${hash}) from CivitAI - cached into database.`,
+          `Successfully fetched metadata for lora ${lora.name} (${hash}) from CivitAI - cached into database.`
         );
         return convertCivitaiAndForgeToNavigatorLora(resp, lora);
       }
     } catch (e) {
       console.error(
         `Failed to get metadata for lora ${lora.name} (${hash}) from CivitAI: `,
-        e,
+        e
       );
     }
   }
@@ -268,12 +265,20 @@ export async function getLoraMetadata(
  * @return An instance of {@link ModelMetadata} if the key exists in the database, otherwise returns undefined.
  */
 export async function getModelMetadata(
-  modelHash: string,
+  modelHash: string
 ): Promise<ModelMetadata | undefined> {
   const results = await asyncQuery(
-    `SELECT id, hash, model_type, FROM_BASE64(metadata_cache) AS metadata_cache,
-                                             metadata_provider, metadata_id, metadata_updated_at, updates_disabled FROM model_metadata WHERE hash = ?`,
-    [modelHash],
+    `SELECT id,
+            hash,
+            model_type,
+            FROM_BASE64(metadata_cache) AS metadata_cache,
+            metadata_provider,
+            metadata_id,
+            metadata_updated_at,
+            updates_disabled
+     FROM model_metadata
+     WHERE hash = ?`,
+    [modelHash]
   );
   if (results.length > 0) {
     return results[0] as ModelMetadata;
@@ -283,7 +288,7 @@ export async function getModelMetadata(
 
 export async function setModelMetadata(
   modelHash: string,
-  metadata: ModelMetadata,
+  metadata: ModelMetadata
 ) {
   console.log("Setting metadata for model with hash: ", modelHash);
   const existingMetadata = await getModelMetadata(modelHash);
@@ -292,45 +297,45 @@ export async function setModelMetadata(
     console.log("Updating metadata for model with hash: ", modelHash);
     await asyncQuery(
       `UPDATE model_metadata
-             SET model_type = ?,
-                 metadata_cache = TO_BASE64(?),
-                 metadata_provider = ?,
-                 metadata_id = ?,
-                 metadata_updated_at = NOW()
-             WHERE hash = ?`,
+       SET model_type          = ?,
+           metadata_cache      = TO_BASE64(?),
+           metadata_provider   = ?,
+           metadata_id         = ?,
+           metadata_updated_at = NOW()
+       WHERE hash = ?`,
       [
         metadata.model_type,
         metadata.metadata_cache,
         metadata.metadata_provider,
         metadata.metadata_id,
-        modelHash,
-      ],
+        modelHash
+      ]
     );
   } else {
     // Insert a new metadata entry if not found
     console.log("Inserting metadata for model with hash: ", modelHash);
     await asyncQuery(
-      `INSERT INTO model_metadata (hash, model_type, metadata_cache, metadata_provider, metadata_id) 
-             VALUES (?, ?, TO_BASE64(?), ?, ?)`,
+      `INSERT INTO model_metadata (hash, model_type, metadata_cache, metadata_provider, metadata_id)
+       VALUES (?, ?, TO_BASE64(?), ?, ?)`,
       [
         modelHash,
         metadata.model_type,
         metadata.metadata_cache,
         metadata.metadata_provider,
-        metadata.metadata_id,
-      ],
+        metadata.metadata_id
+      ]
     );
   }
 }
 
 async function getFileSha256(
   fileName: string,
-  filePath: string,
+  filePath: string
 ): Promise<string> {
   // First, see if we already have a cache of this in our database (file_sha256_cache) as recalculating is expensive
   let results = await asyncQuery(
     "SELECT sha256_sum FROM file_sha256_cache WHERE file_name = ?",
-    [fileName],
+    [fileName]
   );
   if (results.length > 0) {
     console.log("Found cached SHA256 for file: ", fileName);
@@ -339,7 +344,7 @@ async function getFileSha256(
 
   // Not found in the cache, go ahead and calculate it again
   console.log(
-    `Non-cached entry. Calculating SHA256 for file: ${fileName} (${filePath})`,
+    `Non-cached entry. Calculating SHA256 for file: ${fileName} (${filePath})`
   );
   const sha256Cmd = `sha256sum "${filePath}"`;
   let output = child_process.execSync(sha256Cmd);
@@ -347,7 +352,7 @@ async function getFileSha256(
   // Update the cache so that we can just read it from the cache next time
   await asyncQuery(
     "INSERT INTO file_sha256_cache (file_name, sha256_sum) VALUES (?, ?)",
-    [fileName, sha256],
+    [fileName, sha256]
   );
   return sha256;
 }

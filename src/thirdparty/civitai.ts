@@ -1,15 +1,10 @@
 import axios, { isAxiosError } from "axios";
-import {
-  CivitAiModelResponse,
-  CivitAiModelVersion,
-  isCivitAiModelVersion,
-} from "@/types/thirdparty/civitai";
-import * as database from "@/database";
-import { ModelMetadataProvider } from "@/types/enums";
+import { CivitAiModelResponse, CivitAiModelVersion } from "@/types/thirdparty/civitai";
 
 export class CivitAi {
   apiKey: string | undefined = "";
   CIVIT_AI_API_URL = "https://civitai.com/api/v1";
+
   constructor() {
     this.apiKey = process.env.CIVITAI_API_KEY;
   }
@@ -39,9 +34,9 @@ export class CivitAi {
         `${this.getEndpoint("models")}?hidden=1&limit=1`,
         {
           headers: {
-            Authorization: "Bearer " + this.apiKey || "",
-          },
-        },
+            Authorization: "Bearer " + this.apiKey || ""
+          }
+        }
       );
       return resp.status === 200;
     } catch (err) {
@@ -67,9 +62,9 @@ export class CivitAi {
         `${this.getEndpoint("models")}/${modelId}`,
         {
           headers: {
-            Authorization: "Bearer " + this.apiKey,
-          },
-        },
+            Authorization: "Bearer " + this.apiKey
+          }
+        }
       );
 
       if (resp.status !== 200) {
@@ -98,7 +93,7 @@ export class CivitAi {
       } else {
         console.error(
           "Unknown error occurred when checking for matching model version: ",
-          error,
+          error
         );
       }
       return;
@@ -116,11 +111,11 @@ export class CivitAi {
    * the model version is not found.
    */
   async getModelVersionByHash(
-    hash: string,
+    hash: string
   ): Promise<CivitAiModelVersion | undefined> {
     if (!(await this.isAuthenticated())) {
       console.error(
-        "Not authenticated and and therefore unable to fetch model version from CivitAI!",
+        "Not authenticated and and therefore unable to fetch model version from CivitAI!"
       );
       return;
     }
@@ -130,9 +125,9 @@ export class CivitAi {
         `${this.getEndpoint(`model-versions/by-hash/${hash}`)}`,
         {
           headers: {
-            Authorization: "Bearer " + this.apiKey,
-          },
-        },
+            Authorization: "Bearer " + this.apiKey
+          }
+        }
       );
       // Keep only the first image, can be displayed by downstream clients
       // TODO: Locally cache the first image in case it disappears from the API
@@ -150,7 +145,7 @@ export class CivitAi {
       } else {
         console.error(
           "Unknown error occurred when checking for matching model version: ",
-          error,
+          error
         );
       }
       return;
@@ -158,11 +153,11 @@ export class CivitAi {
   }
 
   async getModelVersionById(
-    id: number,
+    id: number
   ): Promise<CivitAiModelVersion | undefined> {
     if (!(await this.isAuthenticated())) {
       console.error(
-        "Not authenticated and and therefore unable to fetch model version (not in cache)!",
+        "Not authenticated and and therefore unable to fetch model version (not in cache)!"
       );
       return;
     }
@@ -172,9 +167,9 @@ export class CivitAi {
         `${this.getEndpoint(`model-versions/${id}`)}`,
         {
           headers: {
-            Authorization: "Bearer " + this.apiKey,
-          },
-        },
+            Authorization: "Bearer " + this.apiKey
+          }
+        }
       );
       // Keep only the first image, can be displayed by downstream clients
       // TODO: Locally cache the first image in case it disappears from the API
@@ -191,12 +186,12 @@ export class CivitAi {
         console.error(error.response?.data);
         console.error(
           "An error was returned from the CivitAI API: ",
-          error.response?.status,
+          error.response?.status
         );
       } else {
         console.error(
           "Unknown error occurred when checking for matching model version: ",
-          error,
+          error
         );
       }
       return;

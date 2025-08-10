@@ -3,12 +3,7 @@ import queryBoolean from "express-query-boolean";
 import { getPermissionRole, isAdministrator, isAuthenticated, PermissionRole } from "@/security";
 import { getLorasFromForge } from "@/thirdparty/forge";
 import { ForgeLora } from "@/types/thirdparty/forge";
-import {
-  getLoraMetadata,
-  isLocalOverrideLora,
-  NavigatorLora,
-  setModelMetadata,
-} from "@/types/models";
+import { getLoraMetadata, isLocalOverrideLora, NavigatorLora, setModelMetadata } from "@/types/models";
 import { RequestBody, RequestParams, ResponseBody } from "@/types/express";
 import { ModelMetadata } from "@/types/database";
 import { ModelMetadataProvider, ModelType } from "@/types/enums";
@@ -27,7 +22,7 @@ modelRouter.get(
   // @ts-ignore
   async (
     req: Request<RequestParams, ResponseBody, RequestBody, LorasRequestQuery>,
-    res: Response,
+    res: Response
   ) => {
     const loras: ForgeLora[] = await getLorasFromForge();
     const mergedLoras: NavigatorLora[] = [];
@@ -56,12 +51,12 @@ modelRouter.get(
     if (unmatchedLoras.length > 0) {
       console.warn(
         "The following loras had no matching model: ",
-        unmatchedLoras.map((l) => l.name),
+        unmatchedLoras.map((l) => l.name)
       );
     }
 
     res.json(mergedLoras);
-  },
+  }
 );
 
 modelRouter.post(
@@ -70,7 +65,7 @@ modelRouter.post(
   isAdministrator,
   async (
     req: Request<RequestParams, ResponseBody, RequestBody>,
-    res: Response,
+    res: Response
   ) => {
     if (req.params["hash"] !== undefined) {
       const hash = req.params["hash"];
@@ -84,18 +79,18 @@ modelRouter.post(
           metadata_provider: ModelMetadataProvider.LOCAL,
           metadata_id: 0,
           metadata_updated_at: new Date(),
-          updates_disabled: false,
+          updates_disabled: false
         };
 
         try {
           await setModelMetadata(hash, metadata);
           res.status(200).json({
-            message: `Successfully set local override for lora ${override.name} (${hash})`,
+            message: `Successfully set local override for lora ${override.name} (${hash})`
           });
         } catch (e) {
           console.error(
             `Failed to set local override for lora ${override.name} (${hash}): `,
-            e,
+            e
           );
           res.status(500).json({ error: "Internal Server Error" });
         }
@@ -105,5 +100,5 @@ modelRouter.post(
     } else {
       res.status(400).json({ error: "Missing required route parameter: hash" });
     }
-  },
+  }
 );
