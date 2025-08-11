@@ -189,7 +189,7 @@ export async function getLoraMetadata(
           resp = await civitai.getModelVersionByHash(hash);
         }
         if (resp !== undefined) {
-          // Update the cache in the database, then return it back to the caller
+          // Update the cache in the database, then return it to the caller
           metadata.metadata_cache = JSON.stringify(resp);
           metadata.metadata_updated_at = new Date();
           await setModelMetadata(hash, metadata);

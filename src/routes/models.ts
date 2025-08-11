@@ -2,11 +2,13 @@ import { Request, Response, Router } from "express";
 import queryBoolean from "express-query-boolean";
 import { getPermissionRole, isAdministrator, isAuthenticated, PermissionRole } from "@/security";
 import { getLorasFromForge } from "@/thirdparty/forge";
-import { ForgeLora } from "@/types/thirdparty/forge";
+import { ForgeEmbeddingResponse, ForgeLora } from "@/types/thirdparty/forge";
 import { getLoraMetadata, isLocalOverrideLora, NavigatorLora, setModelMetadata } from "@/types/models";
 import { RequestBody, RequestParams, ResponseBody } from "@/types/express";
 import { ModelMetadata } from "@/types/database";
 import { ModelMetadataProvider, ModelType } from "@/types/enums";
+import { SD_API_HOST } from "@/constants";
+import axios from "axios";
 
 export const modelRouter = Router();
 
@@ -58,6 +60,19 @@ modelRouter.get(
     res.json(mergedLoras);
   }
 );
+
+modelRouter.get("/embeddings", /*isAuthenticated,*/ async (req: Request, res: Response) => {
+  // Currently, there is not a lot of extra metadata to be gathered for embeddings, so just return the list of available
+  //  embeddings. To my knowledge, all Forge really cares about is that you entered the name of the embedding into the prompt.
+
+  let embeddings: string[] = [];
+  const upstreamResponse = await axios.get<ForgeEmbeddingResponse>(`${SD_API_HOST}/embeddings`);
+  for (const embedding of Object.keys(upstreamResponse.data.loaded)) {
+    embeddings.push(embedding);
+    console.log(`Found embedding: ${embedding}`);
+  }
+  res.json(embeddings);
+});
 
 modelRouter.post(
   "/loras/override/:hash",

@@ -20,6 +20,7 @@ export interface ForgeLoraMetadata {
   ss_datasets?: object[];
   ss_bucket_info?: object;
   ss_dataset_dirs?: object;
+
   // Currently, we only care about the model hash (and maybe tag frequency) but include the other keys just in case.
   [key: string]: any;
 }
@@ -28,6 +29,19 @@ export interface ForgeLoraTagFrequency {
   [key: string]: {
     [tag: string]: number;
   };
+}
+
+export interface ForgeEmbeddingResponse {
+  loaded: Record<string, ForgeEmbedding>;
+  skipped: {};
+}
+
+export interface ForgeEmbedding {
+  step: number | null;
+  sd_checkpoint: string | null;
+  sd_checkpoint_name: string | null;
+  shape: number;
+  vectors: number;
 }
 
 export type ForgeLoraResponse = ForgeLora[];
