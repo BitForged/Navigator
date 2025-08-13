@@ -9,6 +9,7 @@ declare global {
       IMAGE_PIXEL_LIMIT: undefined | number;
       MODEL_DIR: undefined | string;
       ENABLE_DEMO_USER: undefined | boolean;
+      CHECKPOINT_UNLOAD_INTERVAL: undefined | number;
     }
   }
 }

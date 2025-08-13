@@ -7,7 +7,7 @@ const db = database.getConnectionPool();
 const {
   validateUpscalerName,
   getAlwaysOnScripts,
-  cleanseTask,
+  cleanseTask
 } = require("../util");
 
 const queue = [];
@@ -15,6 +15,7 @@ const semaphore = new Semaphore(1); // The current stable diffusion backend only
 
 let lastUsedModel = "";
 let currentJob = null;
+let lastJobExecutionTime = -1;
 
 // Initialization tasks
 axios
@@ -29,7 +30,7 @@ axios
   .catch((error) => {
     console.error(error);
     console.error(
-      "Failed to get last used SD model checkpoint from SD API. Continuing without it.",
+      "Failed to get last used SD model checkpoint from SD API. Continuing without it."
     );
   });
 
@@ -63,6 +64,9 @@ async function worker() {
         console.error("Error processing task: ", error);
       } finally {
         semaphore.release();
+        // Update the last job execution time to the current Unix epoch
+        lastJobExecutionTime = Date.now();
+        currentJob = null;
       }
     } else {
       // Introduce a very brief delay before releasing the semaphore (and thus starting the next task)
@@ -88,12 +92,12 @@ async function verifyWorkingOnTask(task) {
   const reqData = {
     id_task: "navigator-" + task.job_id,
     live_preview: false,
-    id_live_preview: -1,
+    id_live_preview: -1
   };
   try {
     const response = await axios.post(
       `${constants.SD_API_BASE}/internal/progress`,
-      reqData,
+      reqData
     );
     if (response.data === null || response.data === undefined) {
       return false;
@@ -128,7 +132,7 @@ async function checkForProgressAndEmit(task) {
           eta_relative: response.data.eta_relative,
           current_step: response.data.state.sampling_step,
           total_steps: response.data.state.sampling_steps,
-          progress_path: "/api/previews/" + task.job_id,
+          progress_path: "/api/previews/" + task.job_id
         });
         resolve();
       })
@@ -203,7 +207,7 @@ async function processTxt2ImgTask(task) {
     if (hasModelChanged) {
       emitToSocketsByIp(task.origin, "model-changed", {
         model_name: task.model_name,
-        job_id: task.job_id,
+        job_id: task.job_id
       });
     }
     lastUsedModel = task.model_name;
@@ -224,10 +228,10 @@ async function processTxt2ImgTask(task) {
       hr_additional_modules: task.modules || [],
       save_images: false,
       override_settings: {
-        sd_model_checkpoint: task.model_name,
+        sd_model_checkpoint: task.model_name
       },
       override_settings_restore_afterwards: false,
-      force_task_id: "navigator-" + task.job_id,
+      force_task_id: "navigator-" + task.job_id
     };
     if (task.image_enhancements) {
       queuedTask["alwayson_scripts"] = getAlwaysOnScripts(true, true);
@@ -266,7 +270,7 @@ async function processTxt2ImgTask(task) {
       queuedTask.hr_second_pass_steps = clamp(
         task.hrf_steps,
         task.hrf_steps,
-        task.steps,
+        task.steps
       );
 
       if (
@@ -304,7 +308,7 @@ async function processTxt2ImgTask(task) {
       queuedTask.hr_second_pass_steps = clamp(
         queuedTask.steps,
         queuedTask.steps,
-        30,
+        30
       );
 
       // Ensure that we tell the backend to generate the initial image at half the size.
@@ -344,14 +348,14 @@ async function processTxt2ImgTask(task) {
             task.status = "finished";
             emitToSocketsByIp(task.origin, "task-finished", {
               ...cleanseTask(task),
-              img_path: "/api/images/" + task.job_id,
+              img_path: "/api/images/" + task.job_id
             });
           } catch (error) {
             console.error("Error writing image to DB: ", error);
             task.status = "failed";
             emitToSocketsByIp(task.origin, "task-failed", {
               ...cleanseTask(task),
-              error: error,
+              error: error
             });
           }
         } else {
@@ -359,7 +363,7 @@ async function processTxt2ImgTask(task) {
           task.status = "failed";
           emitToSocketsByIp(task.origin, "task-failed", {
             ...cleanseTask(task),
-            error: "No images were generated.",
+            error: "No images were generated."
           });
         }
         resolve();
@@ -370,7 +374,7 @@ async function processTxt2ImgTask(task) {
         console.log("Task failed!");
         emitToSocketsByIp(task.origin, "task-failed", {
           ...cleanseTask(task),
-          error: error.message,
+          error: error.message
         });
         resolve();
       });
@@ -388,7 +392,7 @@ async function processImg2ImgTask(task) {
       const isTaskActiveOnBackend = await verifyWorkingOnTask(task);
       if (!isTaskActiveOnBackend) {
         console.log(
-          "Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check.",
+          "Task is not active (another task might be running directly on the backend, or this one already finished), skipping progress check."
         );
         return;
       }
@@ -399,7 +403,7 @@ async function processImg2ImgTask(task) {
     if (hasModelChanged) {
       emitToSocketsByIp(task.origin, "model-changed", {
         model_name: task.backendRequest.model_name,
-        job_id: task.job_id,
+        job_id: task.job_id
       });
     }
     lastUsedModel = task.backendRequest.model_name;
@@ -424,14 +428,14 @@ async function processImg2ImgTask(task) {
             task.status = "finished";
             emitToSocketsByIp(task.origin, "task-finished", {
               ...cleanseTask(task),
-              img_path: "/api/images/" + task.job_id,
+              img_path: "/api/images/" + task.job_id
             });
           } catch (error) {
             console.error("Error writing image to DB: ", error);
             task.status = "failed";
             emitToSocketsByIp(task.origin, "task-failed", {
               ...cleanseTask(task),
-              error: error,
+              error: error
             });
           }
         } else {
@@ -439,7 +443,7 @@ async function processImg2ImgTask(task) {
           task.status = "failed";
           emitToSocketsByIp(task.origin, "task-failed", {
             ...cleanseTask(task),
-            error: "No images were generated.",
+            error: "No images were generated."
           });
         }
         resolve();
@@ -450,7 +454,7 @@ async function processImg2ImgTask(task) {
         console.log("Task failed!");
         emitToSocketsByIp(task.origin, "task-failed", {
           ...cleanseTask(task),
-          error: error.message,
+          error: error.message
         });
         resolve();
       });
@@ -482,20 +486,20 @@ async function writeImageToDB(jobId, image, params) {
     db.execute(
       "UPDATE images SET image_data = ? WHERE id = ?",
       [image, jobId],
-      function (error) {
+      function(error) {
         if (error) {
           reject(error);
         } else {
           resolve();
         }
-      },
+      }
     );
 
     // Grab the Owner ID from the database
     db.execute(
       "SELECT owner_id FROM images WHERE id = ?",
       [jobId],
-      function (error, results) {
+      function(error, results) {
         if (error) {
           console.error("Error getting owner ID from database: ", error);
         } else {
@@ -504,7 +508,7 @@ async function writeImageToDB(jobId, image, params) {
             // Retrieve image info data and add it to the cache in the database
             axios
               .post(`${constants.SD_API_HOST}/png-info`, {
-                image: image.toString(),
+                image: image.toString()
               })
               .then((response) => {
                 if (response.data !== undefined && response.data !== null) {
@@ -518,16 +522,16 @@ async function writeImageToDB(jobId, image, params) {
                   db.execute(
                     "UPDATE images SET info_data64 = ? WHERE id = ?",
                     [info, jobId],
-                    function (error) {
+                    function(error) {
                       if (error) {
                         console.error(
                           "Error saving image info to database: ",
-                          error,
+                          error
                         );
                       } else {
                         console.log("Image info saved to database!");
                       }
-                    },
+                    }
                   );
                 }
               });
@@ -535,7 +539,7 @@ async function writeImageToDB(jobId, image, params) {
             console.error("No owner ID found for image!");
           }
         }
-      },
+      }
     );
   });
 }
@@ -556,14 +560,14 @@ async function savePreviewToDb(jobId, preview) {
     db.execute(
       "UPDATE images SET preview_data = ? WHERE id = ?",
       [preview, jobId],
-      function (error) {
+      function(error) {
         if (error) {
           reject(error);
           console.error("Preview failed saved to DB!");
         } else {
           resolve();
         }
-      },
+      }
     );
   });
 }
@@ -598,7 +602,7 @@ function removeQueueItem(id) {
   return (
     queue.splice(
       queue.findIndex((item) => item.id === id),
-      1,
+      1
     ).length > 0
   );
 }
@@ -639,6 +643,14 @@ function getCurrentlyProcessingItem() {
   return currentJob;
 }
 
+/**
+ * Used to clear the last used model reference. This means that when a new job is executed,
+ * it will always trigger the "model-changed" event.
+ */
+function clearLastUsedModel() {
+  lastUsedModel = "";
+}
+
 module.exports = {
   worker,
   addQueueItem,
@@ -646,4 +658,8 @@ module.exports = {
   getQueueSize,
   doesQueueContainItem,
   getCurrentlyProcessingItem,
+  clearLastUsedModel,
+  get lastJobExecutionTime() {
+    return lastJobExecutionTime;
+  }
 };

@@ -1,6 +1,7 @@
 require("module-alias/register");
 require("source-map-support").install();
 
+import { TaskManager } from "@/processing/automation";
 import { NavigatorVersion } from "@/types/config";
 import express from "express";
 import childProcess from "child_process";
@@ -26,7 +27,7 @@ const SD_API_HOST = process.env.SD_API_HOST;
 // Grab current version information (commit SHA / branch) if found
 let versionInfo: NavigatorVersion = {
   branch: "unknown",
-  commit: "unknown",
+  commit: "unknown"
 };
 if (process.env.BRANCH !== undefined) {
   versionInfo.branch = process.env.BRANCH;
@@ -57,7 +58,7 @@ if (process.env.COMMIT_SHA !== undefined) {
 }
 
 console.log(
-  `Starting Navigator - Revision: ${versionInfo.commit} (${versionInfo.branch})`,
+  `Starting Navigator - Revision: ${versionInfo.commit} (${versionInfo.branch})`
 );
 
 (async () => {
@@ -90,22 +91,24 @@ socketManager.startWsServer();
 // noinspection JSIgnoredPromiseFromCall
 worker();
 
+new TaskManager();
+
 function allowCors(req, res, next) {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header(
     "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
   );
   next();
 }
 
 module.exports = {
   SD_API_HOST,
-  versionInfo,
+  versionInfo
 };
 
 export default {
   SD_API_HOST,
-  versionInfo,
+  versionInfo
 };
